@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}초대 수락 - Travel Planner{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>여행 초대</h1>
+  <p id="invite-message">초대 정보를 확인하는 중입니다...</p>
+  <button id="accept-btn" style="display:none">초대 수락하기</button>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const TOKEN = "{{ token }}";
+
+requireLogin().then(async (user) => {
+  document.getElementById("invite-message").textContent =
+    `현재 로그인 계정: ${user.email}. 아래 버튼을 눌러 초대를 수락하세요.`;
+  document.getElementById("accept-btn").style.display = "inline-block";
+});
+
+document.getElementById("accept-btn").addEventListener("click", async () => {
+  const res = await apiFetch(`/api/invitations/${TOKEN}/accept`, { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (res.ok) {
+    window.location.href = `/trips/${data.trip_id}`;
+  } else {
+    document.getElementById("invite-message").textContent = data.detail || "초대를 수락할 수 없습니다.";
+    document.getElementById("accept-btn").style.display = "none";
+  }
+});
+</script>
+{% endblock %}

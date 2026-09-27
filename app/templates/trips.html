@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}내 여행 - Travel Planner{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>내 여행</h1>
+  <a class="button" href="/trips/new">+ 새 여행</a>
+</div>
+<div id="trip-list" class="trip-list"></div>
+<p id="trip-empty" class="empty-state" style="display:none">아직 여행이 없습니다. 새 여행을 만들어 보세요.</p>
+{% endblock %}
+{% block scripts %}
+<script>
+requireLogin().then(async () => {
+  const res = await apiFetch("/api/trips");
+  if (!res.ok) return;
+  const trips = await res.json();
+  const listEl = document.getElementById("trip-list");
+  const emptyEl = document.getElementById("trip-empty");
+  if (trips.length === 0) {
+    emptyEl.style.display = "block";
+    return;
+  }
+  const roleLabel = { owner: "Owner", editor: "Editor", viewer: "Viewer" };
+  listEl.innerHTML = trips.map(t => `
+    <a class="card trip-card" href="/trips/${t.id}">
+      <h2>${escapeHtml(t.title)}</h2>
+      <p class="muted">${escapeHtml(t.destination || "목적지 미정")}</p>
+      <p>${t.start_date} ~ ${t.end_date}</p>
+      <span class="badge role-${t.my_role}">${roleLabel[t.my_role] || t.my_role}</span>
+    </a>
+  `).join("");
+});
+</script>
+{% endblock %}

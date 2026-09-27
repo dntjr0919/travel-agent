@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}새 여행 - Travel Planner{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>새 여행 만들기</h1>
+  <form id="trip-form" class="form">
+    <label>제목
+      <input type="text" name="title" required maxlength="200" />
+    </label>
+    <label>여행지
+      <input type="text" name="destination" maxlength="200" />
+    </label>
+    <label>시작일
+      <input type="date" name="start_date" required />
+    </label>
+    <label>종료일
+      <input type="date" name="end_date" required />
+    </label>
+    <label>시간대
+      <input type="text" name="timezone" value="Asia/Seoul" required />
+    </label>
+    <button type="submit">여행 생성</button>
+  </form>
+  <p id="trip-error" class="error-text"></p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+requireLogin();
+document.getElementById("trip-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const errorEl = document.getElementById("trip-error");
+  errorEl.textContent = "";
+  const payload = {
+    title: form.title.value,
+    destination: form.destination.value || null,
+    start_date: form.start_date.value,
+    end_date: form.end_date.value,
+    timezone: form.timezone.value,
+  };
+  const res = await apiFetch("/api/trips", { method: "POST", body: JSON.stringify(payload) });
+  const data = await res.json().catch(() => ({}));
+  if (res.ok) {
+    window.location.href = `/trips/${data.id}`;
+  } else {
+    errorEl.textContent = data.detail || "여행 생성에 실패했습니다.";
+  }
+});
+</script>
+{% endblock %}

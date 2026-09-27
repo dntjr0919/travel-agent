@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}구성원 관리 - Travel Planner{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>구성원 관리</h1>
+  <a class="button secondary" href="/trips/{{ trip_id }}">여행으로 돌아가기</a>
+</div>
+
+<div id="invite-panel" class="card" style="display:none">
+  <h2>새 구성원 초대</h2>
+  <form id="invite-form" class="form">
+    <label>이메일
+      <input type="email" name="email" required />
+    </label>
+    <label>역할
+      <select name="role">
+        <option value="editor">Editor</option>
+        <option value="viewer">Viewer</option>
+      </select>
+    </label>
+    <button type="submit">초대 링크 생성</button>
+  </form>
+  <p id="invite-error" class="error-text"></p>
+  <div id="invite-result" class="invite-result" style="display:none">
+    <p>개발용 초대 링크 (실제 이메일 발송 없음):</p>
+    <code id="invite-url"></code>
+  </div>
+</div>
+
+<div id="member-list" class="card"></div>
+{% endblock %}
+{% block scripts %}
+<script>
+const TRIP_ID = {{ trip_id }};
+let isOwner = false;
+
+async function loadMembers() {
+  const tripRes = await apiFetch(`/api/trips/${TRIP_ID}`);
+  if (!tripRes.ok) {
+    document.getElementById("member-list").innerHTML = `<p class="error-text">접근할 수 없습니다.</p>`;
+    return;
+  }
+  const trip = await tripRes.json();
+  isOwner = trip.my_role === "owner";
+  if (isOwner) document.getElementById("invite-panel").style.display = "block";
+
+  const res = await apiFetch(`/api/trips/${TRIP_ID}/members`);
+  if (!res.ok) return;
+  const members = await res.json();
+  const listEl = document.getElementById("member-list");
+  listEl.innerHTML = `
+    <h2>구성원 목록</h2>
+    <table class="member-table">
+      <thead><tr><th>이름</th><th>이메일</th><th>역할</th>${isOwner ? "<th>관리</th>" : ""}</tr></thead>
+      <tbody>
+        ${members.map(m => `
+          <tr>
+            <td>${escapeHtml(m.display_name)}</td>
+            <td>${escapeHtml(m.email)}</td>
+            <td>${m.role}</td>
+            ${isOwner && m.role !== "owner" ? `
+              <td>
+                <select class="role-select" data-user-id="${m.user_id}">
+                  <option value="editor" ${m.role === "editor" ? "selected" : ""}>Editor</option>
+                  <option value="viewer" ${m.role === "viewer" ? "selected" : ""}>Viewer</option>
+                </select>
+                <button class="remove-btn secondary" data-user-id="${m.user_id}">제거</button>
+              </td>
+            ` : (isOwner ? "<td>-</td>" : "")}
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+  if (isOwner) {
+    listEl.querySelectorAll(".role-select").forEach(sel => {
+      sel.addEventListener("change", async () => {
+        const userId = sel.dataset.userId;
+        const res = await apiFetch(`/api/trips/${TRIP_ID}/members/${userId}`, {
+          method: "PATCH", body: JSON.stringify({ role: sel.value }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          alert(data.detail || "역할 변경에 실패했습니다.");
+          await loadMembers();
+        }
+      });
+    });
+    listEl.querySelectorAll(".remove-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("이 구성원을 제거하시겠습니까?")) return;
+        const res = await apiFetch(`/api/trips/${TRIP_ID}/members/${btn.dataset.userId}`, { method: "DELETE" });
+        if (res.ok) {
+          await loadMembers();
+        } else {
+          const data = await res.json().catch(() => ({}));
+          alert(data.detail || "제거에 실패했습니다.");
+        }
+      });
+    });
+  }
+}
+
+document.getElementById("invite-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const errorEl = document.getElementById("invite-error");
+  errorEl.textContent = "";
+  const payload = { email: form.email.value, role: form.role.value };
+  const res = await apiFetch(`/api/trips/${TRIP_ID}/invitations`, { method: "POST", body: JSON.stringify(payload) });
+  const data = await res.json().catch(() => ({}));
+  if (res.ok) {
+    document.getElementById("invite-result").style.display = "block";
+    document.getElementById("invite-url").textContent = data.invite_url;
+    form.reset();
+  } else {
+    errorEl.textContent = data.detail || "초대 생성에 실패했습니다.";
+  }
+});
+
+requireLogin().then(loadMembers);
+</script>
+{% endblock %}

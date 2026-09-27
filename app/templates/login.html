@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}로그인 - Travel Planner{% endblock %}
+{% block content %}
+<div class="card narrow">
+  <h1>로그인</h1>
+  <form id="login-form" class="form">
+    <label>이메일
+      <input type="email" name="email" required />
+    </label>
+    <label>비밀번호
+      <input type="password" name="password" required />
+    </label>
+    <button type="submit">로그인</button>
+  </form>
+  <p id="login-error" class="error-text"></p>
+  <p>계정이 없나요? <a href="/register">회원가입</a></p>
+  <p><a href="/forgot-password">비밀번호를 잊으셨나요?</a></p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const errorEl = document.getElementById("login-error");
+  errorEl.textContent = "";
+  const payload = { email: form.email.value, password: form.password.value };
+  const res = await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify(payload) });
+  if (res.ok) {
+    const params = new URLSearchParams(window.location.search);
+    window.location.href = params.get("next") || "/trips";
+  } else {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || "로그인에 실패했습니다.";
+  }
+});
+</script>
+{% endblock %}

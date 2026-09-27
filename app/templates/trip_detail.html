@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}여행 상세 - Travel Planner{% endblock %}
+{% block content %}
+<div id="trip-header" class="page-header"></div>
+<div id="conflict-banner" class="conflict-banner" style="display:none">
+  <p>다른 사용자가 이미 수정했습니다. 최신 내용을 불러온 뒤 다시 수정하세요.</p>
+  <button id="conflict-reload">최신 내용 다시 불러오기</button>
+</div>
+
+<div id="item-form-panel" class="card" style="display:none">
+  <h2 id="item-form-title">일정 추가</h2>
+  <form id="item-form" class="form">
+    <input type="hidden" name="item_id" />
+    <input type="hidden" name="version" />
+    <label>제목
+      <input type="text" name="title" required maxlength="200" />
+    </label>
+    <label>카테고리
+      <select name="category">
+        <option value="transportation">교통</option>
+        <option value="accommodation">숙소</option>
+        <option value="sightseeing">관광</option>
+        <option value="food">식사</option>
+        <option value="shopping">쇼핑</option>
+        <option value="other" selected>기타</option>
+      </select>
+    </label>
+    <label>시작 시각
+      <input type="datetime-local" name="start_at" />
+    </label>
+    <label>종료 시각
+      <input type="datetime-local" name="end_at" />
+    </label>
+    <label>장소
+      <input type="text" name="location_name" maxlength="200" />
+    </label>
+    <label>메모
+      <textarea name="memo" rows="3"></textarea>
+    </label>
+    <div class="form-actions">
+      <button type="submit">저장</button>
+      <button type="button" id="item-form-cancel" class="secondary">취소</button>
+    </div>
+  </form>
+  <p id="item-form-error" class="error-text"></p>
+</div>
+
+<div id="itinerary-list"></div>
+<p id="itinerary-empty" class="empty-state" style="display:none">등록된 일정이 없습니다.</p>
+{% endblock %}
+{% block scripts %}
+<script>
+const TRIP_ID = {{ trip_id }};
+const CATEGORY_LABELS = {
+  transportation: "교통", accommodation: "숙소", sightseeing: "관광",
+  food: "식사", shopping: "쇼핑", other: "기타",
+};
+
+let currentUser = null;
+let currentRole = null;
+let currentTrip = null;
+
+function toDatetimeLocalValue(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocalValue(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return d.toISOString();
+}
+
+async function loadTrip() {
+  const res = await apiFetch(`/api/trips/${TRIP_ID}`);
+  if (res.status === 403 || res.status === 404) {
+    document.getElementById("trip-header").innerHTML = `<p class="error-text">이 여행에 접근할 수 없습니다.</p>`;
+    return;
+  }
+  currentTrip = await res.json();
+  currentRole = currentTrip.my_role;
+  renderHeader();
+}
+
+function renderHeader() {
+  const canEdit = currentRole === "owner" || currentRole === "editor";
+  const isOwner = currentRole === "owner";
+  document.getElementById("trip-header").innerHTML = `
+    <div>
+      <h1>${escapeHtml(currentTrip.title)}</h1>
+      <p class="muted">${escapeHtml(currentTrip.destination || "목적지 미정")}</p>
+      <p>${currentTrip.start_date} ~ ${currentTrip.end_date} (${escapeHtml(currentTrip.timezone)})</p>
+    </div>
+    <div class="header-actions">
+      ${isOwner ? `<a class="button secondary" href="/trips/${TRIP_ID}/members">구성원 관리</a>` : ""}
+      ${canEdit ? `<button id="add-item-btn" class="button">+ 일정 추가</button>` : ""}
+    </div>
+  `;
+  if (canEdit) {
+    document.getElementById("add-item-btn").addEventListener("click", () => openItemForm(null));
+  }
+}
+
+async function loadItineraries() {
+  const res = await apiFetch(`/api/trips/${TRIP_ID}/itineraries`);
+  if (!res.ok) return;
+  const items = await res.json();
+  renderItineraries(items);
+}
+
+function groupByDate(items) {
+  const groups = {};
+  for (const item of items) {
+    const key = item.start_at ? item.start_at.slice(0, 10) : "날짜 미정";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(item);
+  }
+  return groups;
+}
+
+function renderItineraries(items) {
+  const listEl = document.getElementById("itinerary-list");
+  const emptyEl = document.getElementById("itinerary-empty");
+  if (items.length === 0) {
+    listEl.innerHTML = "";
+    emptyEl.style.display = "block";
+    return;
+  }
+  emptyEl.style.display = "none";
+  const canEdit = currentRole === "owner" || currentRole === "editor";
+  const groups = groupByDate(items);
+  const dateKeys = Object.keys(groups).sort();
+  listEl.innerHTML = dateKeys.map(date => `
+    <section class="date-group">
+      <h3>${date === "날짜 미정" ? date : date}</h3>
+      <div class="item-list">
+        ${groups[date].map(item => `
+          <div class="item-card" data-id="${item.id}">
+            <div class="item-main">
+              <span class="badge category-${item.category}">${CATEGORY_LABELS[item.category] || item.category}</span>
+              <strong>${escapeHtml(item.title)}</strong>
+              <p class="muted">${item.start_at ? formatDateTime(item.start_at) : ""}${item.end_at ? " ~ " + formatDateTime(item.end_at) : ""}</p>
+              ${item.location_name ? `<p>📍 ${escapeHtml(item.location_name)}</p>` : ""}
+              ${item.memo ? `<p class="memo">${escapeHtml(item.memo)}</p>` : ""}
+              <p class="muted small">최종 수정: ${escapeHtml(item.updated_by_name)} · ${formatDateTime(item.updated_at)}</p>
+            </div>
+            ${canEdit ? `
+              <div class="item-actions">
+                <button class="edit-btn" data-id="${item.id}">수정</button>
+                <button class="delete-btn secondary" data-id="${item.id}">삭제</button>
+              </div>
+            ` : ""}
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `).join("");
+
+  if (canEdit) {
+    listEl.querySelectorAll(".edit-btn").forEach(btn => {
+      btn.addEventListener("click", () => openItemForm(items.find(i => i.id === Number(btn.dataset.id))));
+    });
+    listEl.querySelectorAll(".delete-btn").forEach(btn => {
+      btn.addEventListener("click", () => deleteItem(Number(btn.dataset.id)));
+    });
+  }
+}
+
+function openItemForm(item) {
+  const panel = document.getElementById("item-form-panel");
+  const form = document.getElementById("item-form");
+  document.getElementById("item-form-error").textContent = "";
+  document.getElementById("conflict-banner").style.display = "none";
+  panel.style.display = "block";
+  document.getElementById("item-form-title").textContent = item ? "일정 수정" : "일정 추가";
+  form.item_id.value = item ? item.id : "";
+  form.version.value = item ? item.version : "";
+  form.title.value = item ? item.title : "";
+  form.category.value = item ? item.category : "other";
+  form.start_at.value = item ? toDatetimeLocalValue(item.start_at) : "";
+  form.end_at.value = item ? toDatetimeLocalValue(item.end_at) : "";
+  form.location_name.value = item ? (item.location_name || "") : "";
+  form.memo.value = item ? (item.memo || "") : "";
+  panel.scrollIntoView({ behavior: "smooth" });
+}
+
+function closeItemForm() {
+  document.getElementById("item-form-panel").style.display = "none";
+}
+
+async function deleteItem(itemId) {
+  if (!confirm("이 일정을 삭제하시겠습니까?")) return;
+  const res = await apiFetch(`/api/itineraries/${itemId}`, { method: "DELETE" });
+  if (res.ok) {
+    await loadItineraries();
+  } else {
+    const data = await res.json().catch(() => ({}));
+    alert(data.detail || "삭제에 실패했습니다.");
+  }
+}
+
+document.getElementById("item-form-cancel").addEventListener("click", closeItemForm);
+document.getElementById("conflict-reload").addEventListener("click", async () => {
+  document.getElementById("conflict-banner").style.display = "none";
+  closeItemForm();
+  await loadItineraries();
+});
+
+document.getElementById("item-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const errorEl = document.getElementById("item-form-error");
+  errorEl.textContent = "";
+  const itemId = form.item_id.value;
+  const payload = {
+    title: form.title.value,
+    category: form.category.value,
+    start_at: fromDatetimeLocalValue(form.start_at.value),
+    end_at: fromDatetimeLocalValue(form.end_at.value),
+    location_name: form.location_name.value || null,
+    memo: form.memo.value || null,
+  };
+
+  let res;
+  if (itemId) {
+    payload.version = Number(form.version.value);
+    res = await apiFetch(`/api/itineraries/${itemId}`, { method: "PATCH", body: JSON.stringify(payload) });
+  } else {
+    res = await apiFetch(`/api/trips/${TRIP_ID}/itineraries`, { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  if (res.ok) {
+    closeItemForm();
+    await loadItineraries();
+  } else if (res.status === 409) {
+    document.getElementById("conflict-banner").style.display = "block";
+  } else {
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || "저장에 실패했습니다.";
+  }
+});
+
+requireLogin().then(async (user) => {
+  currentUser = user;
+  await loadTrip();
+  await loadItineraries();
+});
+</script>
+{% endblock %}
