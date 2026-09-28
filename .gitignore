@@ -9,3 +9,26 @@ __pycache__/
 venv/
 .pytest_cache/
 *.egg-info/
+
+# 추가 환경변수 파일 보호
+.env.*
+!.env.example
+
+# SQLite 파일 확장자 추가 보호
+*.sqlite
+*.sqlite3
+
+# Python 캐시·테스트·타입 검사 도구
+*.pyo
+*.pyd
+.mypy_cache/
+.coverage
+htmlcov/
+
+# 로그 파일
+*.log
+
+# OS/에디터 개인 설정
+.vscode/
+.DS_Store
+Thumbs.db

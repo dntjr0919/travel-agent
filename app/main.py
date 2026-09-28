@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.errors import AppError
-from app.routers import auth, collaborations, itineraries, pages, trips
+from app.routers import auth, collaborations, itineraries, pages, presence, trips
 
 app = FastAPI(title="Travel Planner")
 
@@ -17,6 +17,7 @@ app.include_router(trips.router)
 app.include_router(itineraries.router)
 app.include_router(collaborations.router)
 app.include_router(pages.router)
+app.include_router(presence.router)
 
 _VALIDATION_CODE_MESSAGES = {
     "INVALID_DATE_RANGE": "시작일은 종료일보다 늦을 수 없습니다.",

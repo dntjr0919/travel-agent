@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Response
 from sqlalchemy.orm import Session
+from app.services.email_service import send_password_reset_email
 
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -65,11 +66,23 @@ def me(current_user: User = Depends(get_current_user)) -> User:
 
 
 @router.post("/password-reset/request", response_model=PasswordResetRequestResult)
-def request_reset(data: PasswordResetRequest, db: Session = Depends(get_db)) -> PasswordResetRequestResult:
+def request_reset(
+    data: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> PasswordResetRequestResult:
     reset_url = request_password_reset(db, data.email)
+
+    if reset_url is not None:
+        background_tasks.add_task(
+            send_password_reset_email,
+            data.email,
+            reset_url,
+        )
+
     return PasswordResetRequestResult(
-        detail="해당 이메일로 가입된 계정이 있다면 재설정 링크가 발급되었습니다.",
-        reset_url=reset_url,
+        detail="해당 이메일로 가입된 계정이 있다면 비밀번호 재설정 링크를 발송했습니다.",
+        reset_url=None,
     )
 
 

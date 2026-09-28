@@ -17,7 +17,15 @@ class Settings(BaseSettings):
     app_base_url: str = "http://127.0.0.1:8000"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-
+    # SMTP 이메일 발송 설정
+    email_enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = "Travel Planner"
+    smtp_use_tls: bool = True
 
 @lru_cache
 def get_settings() -> Settings:

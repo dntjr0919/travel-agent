@@ -224,3 +224,46 @@ button.secondary, .button.secondary {
   padding: 0.5rem;
   border-bottom: 1px solid var(--color-border);
 }
+/* 현재 이 여행 상세 페이지를 보고 있는 공동 작업자 */
+.presence-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: -0.25rem 0 1rem;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.presence-label {
+  white-space: nowrap;
+}
+
+.presence-users {
+  display: flex;
+  align-items: center;
+  padding-left: 0.35rem;
+}
+
+.presence-avatar {
+  width: 32px;
+  height: 32px;
+  margin-left: -7px;
+  border: 2px solid var(--color-bg);
+  border-radius: 50%;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: default;
+  user-select: none;
+}
+
+.presence-avatar:first-child {
+  margin-left: 0;
+}
+
+.presence-avatar.is-me {
+  box-shadow: 0 0 0 2px var(--color-primary);
+}

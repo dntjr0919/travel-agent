@@ -2,6 +2,10 @@
 {% block title %}여행 상세 - Travel Planner{% endblock %}
 {% block content %}
 <div id="trip-header" class="page-header"></div>
+<div id="presence-bar" class="presence-bar" style="display:none">
+  <span class="presence-label">현재 보고 있는 사람</span>
+  <div id="presence-users" class="presence-users"></div>
+</div>
 <div id="conflict-banner" class="conflict-banner" style="display:none">
   <p>다른 사용자가 이미 수정했습니다. 최신 내용을 불러온 뒤 다시 수정하세요.</p>
   <button id="conflict-reload">최신 내용 다시 불러오기</button>
@@ -59,6 +63,8 @@ const CATEGORY_LABELS = {
 let currentUser = null;
 let currentRole = null;
 let currentTrip = null;
+let presenceSocket = null;
+let presenceReconnectTimer = null;
 
 function toDatetimeLocalValue(iso) {
   if (!iso) return "";
@@ -71,6 +77,104 @@ function fromDatetimeLocalValue(value) {
   if (!value) return null;
   const d = new Date(value);
   return d.toISOString();
+}
+
+function getAvatarInitial(displayName) {
+  const name = (displayName || "?").trim();
+  return name ? name.slice(0, 1).toUpperCase() : "?";
+}
+
+function getAvatarColor(userId) {
+  const colors = [
+    "#2563eb",
+    "#7c3aed",
+    "#db2777",
+    "#ea580c",
+    "#16a34a",
+    "#0891b2",
+  ];
+
+  return colors[userId % colors.length];
+}
+
+function renderPresence(users) {
+  const bar = document.getElementById("presence-bar");
+  const usersEl = document.getElementById("presence-users");
+
+  if (!users || users.length === 0) {
+    bar.style.display = "none";
+    usersEl.innerHTML = "";
+    return;
+  }
+
+  bar.style.display = "flex";
+
+  usersEl.innerHTML = users.map((user) => {
+    const isMe = currentUser && user.id === currentUser.id;
+
+    return `
+      <div
+        class="presence-avatar${isMe ? " is-me" : ""}"
+        style="background-color: ${getAvatarColor(user.id)}"
+        title="${escapeHtml(user.display_name)}"
+        aria-label="${escapeHtml(user.display_name)}"
+      >
+        ${escapeHtml(getAvatarInitial(user.display_name))}
+      </div>
+    `;
+  }).join("");
+}
+
+function connectPresence() {
+  if (presenceSocket) {
+    const isConnectingOrOpen =
+      presenceSocket.readyState === WebSocket.CONNECTING ||
+      presenceSocket.readyState === WebSocket.OPEN;
+
+    if (isConnectingOrOpen) {
+      return;
+    }
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const websocketUrl =
+    `${protocol}://${window.location.host}/ws/trips/${TRIP_ID}/presence`;
+
+  presenceSocket = new WebSocket(websocketUrl);
+
+  presenceSocket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === "presence") {
+      renderPresence(data.users);
+    }
+  };
+
+  presenceSocket.onclose = () => {
+    presenceSocket = null;
+
+    if (presenceReconnectTimer) {
+      clearTimeout(presenceReconnectTimer);
+    }
+
+    presenceReconnectTimer = setTimeout(connectPresence, 3000);
+  };
+
+  presenceSocket.onerror = () => {
+    // 상세 오류 처리는 onclose에서 통합 처리한다.
+  };
+}
+
+function closePresence() {
+  if (presenceReconnectTimer) {
+    clearTimeout(presenceReconnectTimer);
+    presenceReconnectTimer = null;
+  }
+
+  if (presenceSocket) {
+    presenceSocket.close();
+    presenceSocket = null;
+  }
 }
 
 async function loadTrip() {
@@ -243,9 +347,20 @@ document.getElementById("item-form").addEventListener("submit", async (e) => {
 });
 
 requireLogin().then(async (user) => {
+  if (!user) {
+    return;
+  }
+
   currentUser = user;
+
   await loadTrip();
-  await loadItineraries();
+
+  if (currentTrip) {
+    connectPresence();
+    await loadItineraries();
+  }
 });
+
+window.addEventListener("pagehide", closePresence);
 </script>
 {% endblock %}
