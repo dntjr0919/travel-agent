@@ -267,3 +267,130 @@ button.secondary, .button.secondary {
 .presence-avatar.is-me {
   box-shadow: 0 0 0 2px var(--color-primary);
 }
+
+/* 장소 검색과 장소 후보 보관함 */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.section-header h2 {
+  margin: 0;
+}
+
+.section-header p {
+  margin: 0.35rem 0 0;
+}
+
+.place-search-form {
+  display: flex;
+  align-items: end;
+  gap: 0.7rem;
+  margin-bottom: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.place-search-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.place-search-form select,
+.place-search-form input {
+  min-height: 38px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--color-text);
+}
+
+.place-search-query {
+  flex: 1;
+  min-width: 220px;
+}
+
+.place-search-form button {
+  min-height: 38px;
+}
+
+.place-search-results,
+.place-candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.place-result-card,
+.place-candidate-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-card);
+}
+
+.place-result-main,
+.place-candidate-main {
+  min-width: 0;
+}
+
+.place-result-main h3,
+.place-candidate-main h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+
+.place-result-main p,
+.place-candidate-main p {
+  margin: 0.35rem 0;
+}
+
+.place-result-actions,
+.place-candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.place-candidate-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.place-candidate-title-row h3 {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .place-result-card,
+  .place-candidate-card {
+    flex-direction: column;
+  }
+
+  .place-result-actions,
+  .place-candidate-actions {
+    justify-content: flex-start;
+  }
+
+  .place-search-form {
+    align-items: stretch;
+  }
+
+  .place-search-form button {
+    width: 100%;
+  }
+}

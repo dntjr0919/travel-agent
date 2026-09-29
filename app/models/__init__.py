@@ -3,6 +3,7 @@ from app.models.itinerary import ItineraryCategory, ItineraryItem
 from app.models.password_reset import PasswordResetToken
 from app.models.trip import Trip, TripMember, TripMemberStatus, TripRole
 from app.models.user import User
+from app.models.place_candidate import PlaceCandidate
 
 __all__ = [
     "User",
@@ -15,4 +16,5 @@ __all__ = [
     "ItineraryItem",
     "ItineraryCategory",
     "PasswordResetToken",
+    "PlaceCandidate",
 ]

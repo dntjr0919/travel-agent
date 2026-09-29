@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
     smtp_from_name: str = "Travel Planner"
     smtp_use_tls: bool = True
+        # 장소 검색 API 설정
+    google_maps_api_key: str = ""
+    kakao_rest_api_key: str = ""
 
 @lru_cache
 def get_settings() -> Settings:

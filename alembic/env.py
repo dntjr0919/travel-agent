@@ -10,6 +10,7 @@ from app.core.database import Base
 from app.models import (  # noqa: F401  (모델 등록을 위해 임포트)
     Invitation,
     ItineraryItem,
+    PlaceCandidate,
     Trip,
     TripMember,
     User,

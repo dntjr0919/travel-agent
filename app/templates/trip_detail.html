@@ -48,6 +48,64 @@
   </form>
   <p id="item-form-error" class="error-text"></p>
 </div>
+<section id="place-candidate-panel" class="card">
+  <div class="section-header">
+    <div>
+      <h2>장소 후보</h2>
+      <p class="muted small">
+        여행 전에 가고 싶은 장소를 검색해 후보로 저장하세요.
+      </p>
+    </div>
+  </div>
+
+  <form id="place-search-form" class="place-search-form">
+    <label>
+      검색 범위
+      <select name="scope">
+        <option value="domestic">국내 · Kakao</option>
+        <option value="international">해외 · Google</option>
+      </select>
+    </label>
+
+    <label class="place-search-query">
+      장소 검색
+      <input
+        type="search"
+        name="query"
+        placeholder="예: 성수 카페, tokyo sushi"
+        minlength="2"
+        required
+      />
+    </label>
+
+    <button type="submit">장소 검색</button>
+  </form>
+
+  <p id="place-search-error" class="error-text"></p>
+
+  <div id="place-search-loading" class="muted small" style="display:none">
+    장소를 검색하는 중입니다...
+  </div>
+
+  <div id="place-search-results" class="place-search-results"></div>
+</section>
+
+<section id="saved-place-candidates" class="card">
+  <div class="section-header">
+    <div>
+      <h2>저장한 장소 후보</h2>
+      <p class="muted small">
+        저장한 후보는 같은 여행의 구성원과 함께 볼 수 있습니다.
+      </p>
+    </div>
+  </div>
+
+  <div id="place-candidate-list" class="place-candidate-list"></div>
+
+  <p id="place-candidate-empty" class="empty-state" style="display:none">
+    아직 저장한 장소 후보가 없습니다.
+  </p>
+</section>
 
 <div id="itinerary-list"></div>
 <p id="itinerary-empty" class="empty-state" style="display:none">등록된 일정이 없습니다.</p>
@@ -214,6 +272,338 @@ async function loadItineraries() {
   renderItineraries(items);
 }
 
+function canEditPlaces() {
+  return currentRole === "owner" || currentRole === "editor";
+}
+
+function renderPlaceSearchResults(results) {
+  const resultsEl = document.getElementById("place-search-results");
+
+  if (!results || results.length === 0) {
+    resultsEl.innerHTML = `
+      <p class="empty-state">
+        검색 결과가 없습니다. 다른 검색어를 입력해 보세요.
+      </p>
+    `;
+    return;
+  }
+
+  const canEdit = canEditPlaces();
+
+  resultsEl.innerHTML = results.map((place) => `
+    <article class="place-result-card">
+      <div class="place-result-main">
+        <h3>${escapeHtml(place.name)}</h3>
+
+        ${place.address
+          ? `<p class="muted">📍 ${escapeHtml(place.address)}</p>`
+          : ""}
+
+        ${place.category
+          ? `<span class="badge">${escapeHtml(place.category)}</span>`
+          : ""}
+
+        <p class="muted small">
+          제공: ${place.provider === "google" ? "Google Places" : "Kakao Local"}
+        </p>
+      </div>
+
+      <div class="place-result-actions">
+        ${place.map_url
+          ? `
+            <a
+              class="button secondary"
+              href="${escapeHtml(place.map_url)}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              지도 보기
+            </a>
+          `
+          : ""}
+
+        ${canEdit
+          ? `
+            <button
+              class="save-place-btn"
+              data-place="${encodeURIComponent(JSON.stringify(place))}"
+            >
+              후보에 저장
+            </button>
+          `
+          : ""}
+      </div>
+    </article>
+  `).join("");
+
+  if (canEdit) {
+    resultsEl.querySelectorAll(".save-place-btn").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const place = JSON.parse(decodeURIComponent(button.dataset.place));
+        await savePlaceCandidate(place, button);
+      });
+    });
+  }
+}
+
+async function searchPlaces(scope, query) {
+  const errorEl = document.getElementById("place-search-error");
+  const loadingEl = document.getElementById("place-search-loading");
+  const resultsEl = document.getElementById("place-search-results");
+
+  errorEl.textContent = "";
+  resultsEl.innerHTML = "";
+  loadingEl.style.display = "block";
+
+  try {
+    const url =
+      `/api/trips/${TRIP_ID}/places/search?` +
+      new URLSearchParams({
+        scope,
+        q: query,
+      });
+
+    const res = await apiFetch(url);
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      errorEl.textContent = data.detail || "장소 검색에 실패했습니다.";
+      return;
+    }
+
+    renderPlaceSearchResults(data.results);
+  } catch (error) {
+    console.error("장소 검색 오류", error);
+    errorEl.textContent = "장소 검색 중 네트워크 오류가 발생했습니다.";
+  } finally {
+    loadingEl.style.display = "none";
+  }
+}
+
+async function savePlaceCandidate(place, button) {
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "저장 중...";
+
+  const payload = {
+    provider: place.provider,
+    external_place_id: place.external_place_id,
+    name: place.name,
+    address: place.address || null,
+    latitude: place.latitude ?? null,
+    longitude: place.longitude ?? null,
+    category: place.category || null,
+    map_url: place.map_url || null,
+    source_url: place.source_url || null,
+    memo: null,
+  };
+
+  try {
+    const res = await apiFetch(
+      `/api/trips/${TRIP_ID}/place-candidates`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+
+    const data = await res.json().catch(() => ({}));
+
+    if (res.ok) {
+      button.textContent = "저장됨";
+      await loadPlaceCandidates();
+      return;
+    }
+
+    if (res.status === 409) {
+      button.textContent = "이미 저장됨";
+      return;
+    }
+
+    alert(data.detail || "장소 후보 저장에 실패했습니다.");
+  } catch (error) {
+    console.error("장소 후보 저장 오류", error);
+    alert("장소 후보 저장 중 네트워크 오류가 발생했습니다.");
+  } finally {
+    if (button.textContent !== "저장됨" && button.textContent !== "이미 저장됨") {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
+function renderPlaceCandidates(candidates) {
+  const listEl = document.getElementById("place-candidate-list");
+  const emptyEl = document.getElementById("place-candidate-empty");
+
+  if (!candidates || candidates.length === 0) {
+    listEl.innerHTML = "";
+    emptyEl.style.display = "block";
+    return;
+  }
+
+  emptyEl.style.display = "none";
+
+  const canEdit = canEditPlaces();
+
+  listEl.innerHTML = candidates.map((candidate) => `
+    <article class="place-candidate-card">
+      <div class="place-candidate-main">
+        <div class="place-candidate-title-row">
+          <h3>${escapeHtml(candidate.name)}</h3>
+          ${candidate.category
+            ? `<span class="badge">${escapeHtml(candidate.category)}</span>`
+            : ""}
+        </div>
+
+        ${candidate.address
+          ? `<p class="muted">📍 ${escapeHtml(candidate.address)}</p>`
+          : ""}
+
+        ${candidate.memo
+          ? `<p class="memo">${escapeHtml(candidate.memo)}</p>`
+          : ""}
+
+        <p class="muted small">
+          추가: ${escapeHtml(candidate.created_by_name)}
+          · ${formatDateTime(candidate.created_at)}
+          · 제공: ${candidate.provider === "google" ? "Google Places" : candidate.provider === "kakao" ? "Kakao Local" : candidate.provider}
+        </p>
+      </div>
+
+      <div class="place-candidate-actions">
+        ${candidate.map_url
+          ? `
+            <a
+              class="button secondary"
+              href="${escapeHtml(candidate.map_url)}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              지도 보기
+            </a>
+          `
+          : ""}
+
+        ${canEdit
+          ? `
+            <button
+              class="edit-place-memo-btn secondary"
+              data-id="${candidate.id}"
+              data-memo="${encodeURIComponent(candidate.memo || "")}"
+            >
+              메모
+            </button>
+
+            <button
+              class="delete-place-candidate-btn secondary"
+              data-id="${candidate.id}"
+            >
+              삭제
+            </button>
+          `
+          : ""}
+      </div>
+    </article>
+  `).join("");
+
+  if (canEdit) {
+    listEl.querySelectorAll(".edit-place-memo-btn").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const currentMemo = decodeURIComponent(button.dataset.memo || "");
+        const memo = prompt("장소 후보 메모", currentMemo);
+
+        if (memo === null) {
+          return;
+        }
+
+        await updatePlaceCandidateMemo(
+          Number(button.dataset.id),
+          memo,
+        );
+      });
+    });
+
+    listEl.querySelectorAll(".delete-place-candidate-btn").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const confirmed = confirm("이 장소 후보를 삭제하시겠습니까?");
+
+        if (!confirmed) {
+          return;
+        }
+
+        await deletePlaceCandidate(Number(button.dataset.id));
+      });
+    });
+  }
+}
+
+async function loadPlaceCandidates() {
+  const listEl = document.getElementById("place-candidate-list");
+
+  try {
+    const res = await apiFetch(
+      `/api/trips/${TRIP_ID}/place-candidates`,
+    );
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      listEl.innerHTML = `
+        <p class="error-text">
+          ${escapeHtml(data.detail || "장소 후보를 불러오지 못했습니다.")}
+        </p>
+      `;
+      return;
+    }
+
+    const candidates = await res.json();
+    renderPlaceCandidates(candidates);
+  } catch (error) {
+    console.error("장소 후보 목록 오류", error);
+
+    listEl.innerHTML = `
+      <p class="error-text">
+        장소 후보를 불러오는 중 네트워크 오류가 발생했습니다.
+      </p>
+    `;
+  }
+}
+
+async function updatePlaceCandidateMemo(candidateId, memo) {
+  const res = await apiFetch(
+    `/api/place-candidates/${candidateId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ memo: memo || null }),
+    },
+  );
+
+  const data = await res.json().catch(() => ({}));
+
+  if (res.ok) {
+    await loadPlaceCandidates();
+  } else {
+    alert(data.detail || "메모 수정에 실패했습니다.");
+  }
+}
+
+async function deletePlaceCandidate(candidateId) {
+  const res = await apiFetch(
+    `/api/place-candidates/${candidateId}`,
+    {
+      method: "DELETE",
+    },
+  );
+
+  if (res.ok) {
+    await loadPlaceCandidates();
+    return;
+  }
+
+  const data = await res.json().catch(() => ({}));
+  alert(data.detail || "장소 후보 삭제에 실패했습니다.");
+}
+
 function groupByDate(items) {
   const groups = {};
   for (const item of items) {
@@ -346,6 +736,22 @@ document.getElementById("item-form").addEventListener("submit", async (e) => {
   }
 });
 
+document.getElementById("place-search-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const form = event.target;
+  const scope = form.scope.value;
+  const query = form.query.value.trim();
+
+  if (query.length < 2) {
+    document.getElementById("place-search-error").textContent =
+      "장소 검색어는 2글자 이상 입력하세요.";
+    return;
+  }
+
+  await searchPlaces(scope, query);
+});
+
 requireLogin().then(async (user) => {
   if (!user) {
     return;
@@ -355,9 +761,19 @@ requireLogin().then(async (user) => {
 
   await loadTrip();
 
-  if (currentTrip) {
+  if (!currentTrip) {
+    return;
+  }
+
+  await Promise.all([
+    loadItineraries(),
+    loadPlaceCandidates(),
+  ]);
+
+  try {
     connectPresence();
-    await loadItineraries();
+  } catch (error) {
+    console.error("공동 작업자 접속 상태 연결에 실패했습니다.", error);
   }
 });
 
