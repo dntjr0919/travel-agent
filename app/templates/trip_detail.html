@@ -66,6 +66,13 @@
         <option value="other" selected>기타</option>
       </select>
     </label>
+    <label>상태
+  <select name="status">
+    <option value="planned" selected>예정</option>
+    <option value="completed">완료</option>
+    <option value="cancelled">취소</option>
+  </select>
+</label>
     <label>시작 시각
   <input type="datetime-local" id="item-start-at" name="start_at" />
 </label>
@@ -154,6 +161,11 @@ const TRIP_ID = {{ trip_id }};
 const CATEGORY_LABELS = {
   transportation: "교통", accommodation: "숙소", sightseeing: "관광",
   food: "식사", shopping: "쇼핑", other: "기타",
+};
+const STATUS_LABELS = {
+  planned: "예정",
+  completed: "완료",
+  cancelled: "취소",
 };
 const PLACE_CATEGORY_TO_ITINERARY = {
   restaurant: "food",
@@ -881,11 +893,35 @@ async function deletePlaceCandidate(candidateId) {
 
 function groupByDate(items) {
   const groups = {};
+
   for (const item of items) {
     const key = item.start_at ? item.start_at.slice(0, 10) : "날짜 미정";
-    if (!groups[key]) groups[key] = [];
+
+    if (!groups[key]) {
+      groups[key] = [];
+    }
+
     groups[key].push(item);
   }
+
+  for (const groupItems of Object.values(groups)) {
+    groupItems.sort((a, b) => {
+      if (!a.start_at && !b.start_at) {
+        return a.id - b.id;
+      }
+
+      if (!a.start_at) {
+        return 1;
+      }
+
+      if (!b.start_at) {
+        return -1;
+      }
+
+      return a.start_at.localeCompare(b.start_at);
+    });
+  }
+
   return groups;
 }
 
@@ -914,8 +950,12 @@ function renderItineraries(items) {
           <div class="item-card" data-id="${item.id}">
             <div class="item-main">
               <span class="badge category-${item.category}">
-                ${CATEGORY_LABELS[item.category] || item.category}
-              </span>
+  ${CATEGORY_LABELS[item.category] || item.category}
+</span>
+
+<span class="badge status-badge status-${item.status || "planned"}">
+  ${STATUS_LABELS[item.status] || STATUS_LABELS.planned}
+</span>
 
               <strong>${escapeHtml(item.title)}</strong>
 
@@ -1018,6 +1058,7 @@ function openItemForm(item) {
   form.version.value = item ? item.version : "";
   form.title.value = item ? item.title : "";
   form.category.value = item ? item.category : "other";
+  form.status.value = item ? item.status : "planned";
 
   itemEndAtManuallyEdited = Boolean(item);
 
@@ -1102,6 +1143,7 @@ document.getElementById("item-form").addEventListener("submit", async (e) => {
     end_at: fromDatetimeLocalValue(form.end_at.value),
     location_name: form.location_name.value || null,
     memo: form.memo.value || null,
+    status: form.status.value || null,
   };
 if (payload.start_at && payload.end_at && payload.end_at <= payload.start_at) {
   errorEl.textContent = "종료 시각은 시작 시각보다 늦어야 합니다.";

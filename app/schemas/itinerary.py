@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from app.models.itinerary import ItineraryStatus
 
 CATEGORY_PATTERN = "^(transportation|accommodation|sightseeing|food|shopping|other)$"
 
 
 class ItineraryCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+    status: ItineraryStatus = Field(default=ItineraryStatus.PLANNED)
     category: str = Field(default="other", pattern=CATEGORY_PATTERN)
     start_at: datetime | None = None
     end_at: datetime | None = None
@@ -25,6 +27,7 @@ class ItineraryCreate(BaseModel):
 class ItineraryUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     category: str | None = Field(default=None, pattern=CATEGORY_PATTERN)
+    status: ItineraryStatus | None = None
     start_at: datetime | None = None
     end_at: datetime | None = None
     location_name: str | None = Field(default=None, max_length=200)
@@ -45,6 +48,7 @@ class ItineraryOut(BaseModel):
     trip_id: int
     title: str
     category: str
+    status: str
     start_at: datetime | None
     end_at: datetime | None
     location_name: str | None

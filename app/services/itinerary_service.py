@@ -7,8 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
-from app.models.itinerary import ItineraryItem
-from app.models.trip import Trip
+from app.models.itinerary import ItineraryItem, ItineraryStatus
 from app.models.user import User
 from app.schemas.itinerary import ItineraryCreate, ItineraryUpdate
 from app.services.permission_service import require_editor_or_owner, require_member, require_trip
@@ -32,6 +31,7 @@ def _serialize(db: Session, item: ItineraryItem) -> dict:
         "trip_id": item.trip_id,
         "title": item.title,
         "category": item.category,
+        "status": item.status,
         "start_at": item.start_at,
         "end_at": item.end_at,
         "location_name": item.location_name,
@@ -70,6 +70,7 @@ def create_itinerary(db: Session, trip_id: int, user: User, data: ItineraryCreat
         trip_id=trip_id,
         title=data.title,
         category=data.category,
+        status=data.status.value,
         start_at=data.start_at,
         end_at=data.end_at,
         location_name=data.location_name,
@@ -117,6 +118,10 @@ def update_itinerary(db: Session, item_id: int, user: User, data: ItineraryUpdat
         _check_within_trip_range(trip, new_end)
 
     update_fields = data.model_dump(exclude_unset=True, exclude={"version"})
+
+    if "status" in update_fields:
+        update_fields["status"] = data.status.value if data.status is not None else None
+
     for field, value in update_fields.items():
         setattr(item, field, value)
 

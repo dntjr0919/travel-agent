@@ -434,3 +434,21 @@ button.secondary, .button.secondary {
     justify-content: flex-start;
   }
 }
+.status-badge {
+  margin-left: 0.35rem;
+}
+
+.status-planned {
+  background: #eef1ff;
+  color: #1f4fb0;
+}
+
+.status-completed {
+  background: #e8f7ee;
+  color: #17733a;
+}
+
+.status-cancelled {
+  background: #fff0f0;
+  color: #b42318;
+}

@@ -21,6 +21,10 @@ class ItineraryCategory(str, enum.Enum):
     SHOPPING = "shopping"
     OTHER = "other"
 
+class ItineraryStatus(str, enum.Enum):
+    PLANNED = "planned"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
 
 class ItineraryItem(Base):
     __tablename__ = "itinerary_items"
@@ -28,6 +32,7 @@ class ItineraryItem(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default=ItineraryStatus.PLANNED.value)  
     category: Mapped[str] = mapped_column(String(30), nullable=False, default=ItineraryCategory.OTHER.value)
     start_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     end_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
