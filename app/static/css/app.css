@@ -183,6 +183,13 @@ button.secondary, .button.secondary {
   justify-content: space-between;
   gap: 1rem;
   align-items: flex-start;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.item-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .item-main p { margin: 0.2rem 0; }
@@ -190,8 +197,10 @@ button.secondary, .button.secondary {
 
 .item-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.4rem;
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
 .conflict-banner {
@@ -341,6 +350,7 @@ button.secondary, .button.secondary {
 
 .place-result-main,
 .place-candidate-main {
+  flex: 1;
   min-width: 0;
 }
 
@@ -392,5 +402,35 @@ button.secondary, .button.secondary {
 
   .place-search-form button {
     width: 100%;
+  }
+}
+#trip-edit-panel {
+  scroll-margin-top: 1rem;
+}
+
+.item-main .memo {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.map-link {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.map-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .item-card {
+    flex-direction: column;
+  }
+
+  .item-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }

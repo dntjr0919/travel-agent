@@ -2,6 +2,43 @@
 {% block title %}여행 상세 - Travel Planner{% endblock %}
 {% block content %}
 <div id="trip-header" class="page-header"></div>
+<div id="trip-edit-panel" class="card" style="display:none">
+  <h2>여행 정보 수정</h2>
+
+  <form id="trip-edit-form" class="form">
+    <label>
+      제목
+      <input type="text" name="title" required maxlength="200" />
+    </label>
+
+    <label>
+      여행지
+      <input type="text" name="destination" maxlength="200" />
+    </label>
+
+    <label>
+      시작일
+      <input type="date" name="start_date" required />
+    </label>
+
+    <label>
+      종료일
+      <input type="date" name="end_date" required />
+    </label>
+
+    <label>
+      시간대
+      <input type="text" name="timezone" required maxlength="64" />
+    </label>
+
+    <div class="form-actions">
+      <button type="submit">저장</button>
+      <button type="button" id="trip-edit-cancel" class="secondary">취소</button>
+    </div>
+  </form>
+
+  <p id="trip-edit-error" class="error-text"></p>
+</div>
 <div id="presence-bar" class="presence-bar" style="display:none">
   <span class="presence-label">현재 보고 있는 사람</span>
   <div id="presence-users" class="presence-users"></div>
@@ -117,7 +154,24 @@ const CATEGORY_LABELS = {
   transportation: "교통", accommodation: "숙소", sightseeing: "관광",
   food: "식사", shopping: "쇼핑", other: "기타",
 };
-
+const PLACE_CATEGORY_TO_ITINERARY = {
+  restaurant: "food",
+  cafe: "food",
+  bakery: "food",
+  food: "food",
+  accommodation: "accommodation",
+  lodging: "accommodation",
+  hotel: "accommodation",
+  airport: "transportation",
+  train_station: "transportation",
+  bus_station: "transportation",
+  subway_station: "transportation",
+  tourist_attraction: "sightseeing",
+  museum: "sightseeing",
+  park: "sightseeing",
+  shopping_mall: "shopping",
+  department_store: "shopping",
+};
 let currentUser = null;
 let currentRole = null;
 let currentTrip = null;
@@ -135,6 +189,94 @@ function fromDatetimeLocalValue(value) {
   if (!value) return null;
   const d = new Date(value);
   return d.toISOString();
+}
+
+function renderMemoWithMapLink(memo) {
+  if (!memo) {
+    return "";
+  }
+
+  const lines = memo.split("\n");
+  const renderedLines = lines.map((line) => {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("지도: ")) {
+      const url = trimmed.slice("지도: ".length).trim();
+
+      if (url.startsWith("https://") || url.startsWith("http://")) {
+        return `
+          지도:
+          <a
+            class="map-link"
+            href="${escapeHtml(url)}"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="${escapeHtml(url)}"
+          >
+            지도 열기 ↗
+          </a>
+        `;
+      }
+    }
+
+    return escapeHtml(line);
+  });
+
+  return renderedLines.join("<br>");
+}
+
+function getItineraryCategoryForPlace(place) {
+  const category = (place.category || "").toLowerCase();
+
+  if (PLACE_CATEGORY_TO_ITINERARY[category]) {
+    return PLACE_CATEGORY_TO_ITINERARY[category];
+  }
+
+  if (
+    category.includes("카페") ||
+    category.includes("음식") ||
+    category.includes("식당") ||
+    category.includes("레스토랑")
+  ) {
+    return "food";
+  }
+
+  if (
+    category.includes("숙소") ||
+    category.includes("호텔") ||
+    category.includes("모텔") ||
+    category.includes("펜션")
+  ) {
+    return "accommodation";
+  }
+
+  if (
+    category.includes("공항") ||
+    category.includes("역") ||
+    category.includes("터미널") ||
+    category.includes("교통")
+  ) {
+    return "transportation";
+  }
+
+  if (
+    category.includes("관광") ||
+    category.includes("박물관") ||
+    category.includes("공원") ||
+    category.includes("문화")
+  ) {
+    return "sightseeing";
+  }
+
+  if (
+    category.includes("쇼핑") ||
+    category.includes("백화점") ||
+    category.includes("마트")
+  ) {
+    return "shopping";
+  }
+
+  return "other";
 }
 
 function getAvatarInitial(displayName) {
@@ -256,13 +398,90 @@ function renderHeader() {
       <p>${currentTrip.start_date} ~ ${currentTrip.end_date} (${escapeHtml(currentTrip.timezone)})</p>
     </div>
     <div class="header-actions">
-      ${isOwner ? `<a class="button secondary" href="/trips/${TRIP_ID}/members">구성원 관리</a>` : ""}
-      ${canEdit ? `<button id="add-item-btn" class="button">+ 일정 추가</button>` : ""}
-    </div>
+  ${isOwner
+    ? `<a class="button secondary" href="/trips/${TRIP_ID}/members">구성원 관리</a>`
+    : ""}
+
+  ${isOwner
+    ? `<button id="edit-trip-btn" class="button secondary">여행 정보 수정</button>`
+    : ""}
+
+  ${canEdit
+    ? `<button id="add-item-btn" class="button">+ 일정 추가</button>`
+    : ""}
+</div>
   `;
-  if (canEdit) {
-    document.getElementById("add-item-btn").addEventListener("click", () => openItemForm(null));
+if (isOwner) {
+  document.getElementById("edit-trip-btn").addEventListener("click", openTripEditForm);
+}
+
+if (canEdit) {
+  document.getElementById("add-item-btn").addEventListener("click", () => openItemForm(null));
+}}
+
+function openTripEditForm() {
+  if (!currentTrip) {
+    return;
   }
+
+  const panel = document.getElementById("trip-edit-panel");
+  const form = document.getElementById("trip-edit-form");
+
+  document.getElementById("trip-edit-error").textContent = "";
+
+  form.title.value = currentTrip.title || "";
+  form.destination.value = currentTrip.destination || "";
+  form.start_date.value = currentTrip.start_date || "";
+  form.end_date.value = currentTrip.end_date || "";
+  form.timezone.value = currentTrip.timezone || "Asia/Seoul";
+
+  panel.style.display = "block";
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closeTripEditForm() {
+  document.getElementById("trip-edit-panel").style.display = "none";
+  document.getElementById("trip-edit-error").textContent = "";
+}
+
+async function updateTrip() {
+  const form = document.getElementById("trip-edit-form");
+  const errorEl = document.getElementById("trip-edit-error");
+
+  errorEl.textContent = "";
+
+  const payload = {
+    title: form.title.value.trim(),
+    destination: form.destination.value.trim() || null,
+    start_date: form.start_date.value,
+    end_date: form.end_date.value,
+    timezone: form.timezone.value.trim(),
+  };
+
+  if (payload.start_date > payload.end_date) {
+    errorEl.textContent = "시작일은 종료일보다 늦을 수 없습니다.";
+    return;
+  }
+
+  const res = await apiFetch(`/api/trips/${TRIP_ID}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    errorEl.textContent = data.detail || "여행 정보 수정에 실패했습니다.";
+    return;
+  }
+
+  currentTrip = data;
+  currentRole = data.my_role;
+
+  renderHeader();
+  closeTripEditForm();
+
+  await loadItineraries();
 }
 
 async function loadItineraries() {
@@ -487,11 +706,18 @@ function renderPlaceCandidates(candidates) {
 
         ${canEdit
           ? `
+          <button
+  class="add-place-to-itinerary-btn"
+  data-place="${encodeURIComponent(JSON.stringify(candidate))}"
+>
+  일정에 추가
+</button>
             <button
               class="edit-place-memo-btn secondary"
               data-id="${candidate.id}"
               data-memo="${encodeURIComponent(candidate.memo || "")}"
             >
+            
               메모
             </button>
 
@@ -508,6 +734,12 @@ function renderPlaceCandidates(candidates) {
   `).join("");
 
   if (canEdit) {
+      listEl.querySelectorAll(".add-place-to-itinerary-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      const place = JSON.parse(decodeURIComponent(button.dataset.place));
+      openItineraryFormFromPlace(place);
+    });
+  });
     listEl.querySelectorAll(".edit-place-memo-btn").forEach((button) => {
       button.addEventListener("click", async () => {
         const currentMemo = decodeURIComponent(button.dataset.memo || "");
@@ -617,49 +849,115 @@ function groupByDate(items) {
 function renderItineraries(items) {
   const listEl = document.getElementById("itinerary-list");
   const emptyEl = document.getElementById("itinerary-empty");
+  const canEdit = currentRole === "owner" || currentRole === "editor";
+
   if (items.length === 0) {
     listEl.innerHTML = "";
     emptyEl.style.display = "block";
     return;
   }
+
   emptyEl.style.display = "none";
-  const canEdit = currentRole === "owner" || currentRole === "editor";
+
   const groups = groupByDate(items);
   const dateKeys = Object.keys(groups).sort();
-  listEl.innerHTML = dateKeys.map(date => `
+
+  listEl.innerHTML = dateKeys.map((date) => `
     <section class="date-group">
       <h3>${date === "날짜 미정" ? date : date}</h3>
+
       <div class="item-list">
-        ${groups[date].map(item => `
+        ${groups[date].map((item) => `
           <div class="item-card" data-id="${item.id}">
             <div class="item-main">
-              <span class="badge category-${item.category}">${CATEGORY_LABELS[item.category] || item.category}</span>
+              <span class="badge category-${item.category}">
+                ${CATEGORY_LABELS[item.category] || item.category}
+              </span>
+
               <strong>${escapeHtml(item.title)}</strong>
-              <p class="muted">${item.start_at ? formatDateTime(item.start_at) : ""}${item.end_at ? " ~ " + formatDateTime(item.end_at) : ""}</p>
-              ${item.location_name ? `<p>📍 ${escapeHtml(item.location_name)}</p>` : ""}
-              ${item.memo ? `<p class="memo">${escapeHtml(item.memo)}</p>` : ""}
-              <p class="muted small">최종 수정: ${escapeHtml(item.updated_by_name)} · ${formatDateTime(item.updated_at)}</p>
+
+              <p class="muted">
+                ${item.start_at ? formatDateTime(item.start_at) : ""}
+                ${item.end_at ? ` ~ ${formatDateTime(item.end_at)}` : ""}
+              </p>
+
+              ${item.location_name
+                ? `<p>📍 ${escapeHtml(item.location_name)}</p>`
+                : ""}
+
+              ${item.memo
+  ? `<p class="memo">${renderMemoWithMapLink(item.memo)}</p>`
+  : ""}
+
+              <p class="muted small">
+                최종 수정: ${escapeHtml(item.updated_by_name)}
+                · ${formatDateTime(item.updated_at)}
+              </p>
             </div>
-            ${canEdit ? `
-              <div class="item-actions">
-                <button class="edit-btn" data-id="${item.id}">수정</button>
-                <button class="delete-btn secondary" data-id="${item.id}">삭제</button>
-              </div>
-            ` : ""}
+
+            ${canEdit
+              ? `
+                <div class="item-actions">
+                  <button class="edit-btn" data-id="${item.id}">
+                    수정
+                  </button>
+
+                  <button class="delete-btn secondary" data-id="${item.id}">
+                    삭제
+                  </button>
+                </div>
+              `
+              : ""}
           </div>
         `).join("")}
       </div>
     </section>
   `).join("");
 
-  if (canEdit) {
-    listEl.querySelectorAll(".edit-btn").forEach(btn => {
-      btn.addEventListener("click", () => openItemForm(items.find(i => i.id === Number(btn.dataset.id))));
-    });
-    listEl.querySelectorAll(".delete-btn").forEach(btn => {
-      btn.addEventListener("click", () => deleteItem(Number(btn.dataset.id)));
-    });
+  if (!canEdit) {
+    return;
   }
+
+  listEl.querySelectorAll(".edit-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      const itemId = Number(button.dataset.id);
+      const item = items.find((currentItem) => currentItem.id === itemId);
+
+      if (item) {
+        openItemForm(item);
+      }
+    });
+  });
+
+  listEl.querySelectorAll(".delete-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      deleteItem(Number(button.dataset.id));
+    });
+  });
+}
+
+function openItineraryFormFromPlace(place) {
+  openItemForm(null);
+
+  const form = document.getElementById("item-form");
+  const memoParts = [];
+
+  if (place.memo) {
+    memoParts.push(place.memo);
+  }
+
+  if (place.address) {
+    memoParts.push(`주소: ${place.address}`);
+  }
+
+  if (place.map_url) {
+    memoParts.push(`지도: ${place.map_url}`);
+  }
+
+  form.title.value = place.name || "";
+  form.category.value = getItineraryCategoryForPlace(place);
+  form.location_name.value = place.name || "";
+  form.memo.value = memoParts.join("\n\n");
 }
 
 function openItemForm(item) {
@@ -696,6 +994,12 @@ async function deleteItem(itemId) {
 }
 
 document.getElementById("item-form-cancel").addEventListener("click", closeItemForm);
+document.getElementById("trip-edit-cancel").addEventListener("click", closeTripEditForm);
+
+document.getElementById("trip-edit-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await updateTrip();
+});
 document.getElementById("conflict-reload").addEventListener("click", async () => {
   document.getElementById("conflict-banner").style.display = "none";
   closeItemForm();
