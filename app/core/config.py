@@ -29,6 +29,7 @@ class Settings(BaseSettings):
         # 장소 검색 API 설정
     google_maps_api_key: str = ""
     kakao_rest_api_key: str = ""
+    gemini_api_key: str = ""
 
 @lru_cache
 def get_settings() -> Settings:

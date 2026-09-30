@@ -63,11 +63,45 @@
 - 숙소 체크아웃 초안은 독립 일정으로 추가되며 여행 종료일을 자동 변경하지 않음
 - 각 초안은 기존 일정 생성 폼에서 사용자가 체크인/체크아웃 시각을 검토한 뒤 저장
 
+### 예약 스크린샷 분석 백엔드 (1단계)
+
+- Owner/Editor가 예약 스크린샷(JPG/PNG 1장)을 API로 업로드하면 Gemini가 예약 초안 JSON을 반환
+- 화면 UI와 직접 연결하지 않고 API만 먼저 제공
+- 응답은 교통/숙소 중 하나의 초안 구조로 검증되어 반환
+- 체크아웃 초안은 독립 일정으로 활용 가능하지만 여행 종료일은 자동 변경하지 않음
+- 반환된 초안은 사용자가 기존 일정 생성 폼에서 검토 후 저장해야 함
+
+#### API 설정
+
+- `.env`에 `GEMINI_API_KEY`를 설정해야 동작
+- 엔드포인트: `POST /api/trips/{trip_id}/reservation-imports/analyze-image`
+- 요청 형식: `multipart/form-data`
+  - `file`: `image/jpeg` 또는 `image/png` (최대 5MB)
+  - `booking_url`: 선택 문자열
+
+#### 개인정보 및 데이터 처리 주의사항
+
+- 업로드된 이미지 원본은 DB/정적 폴더/서버 디스크에 저장하지 않음
+- 이미지 바이트는 메모리에서만 읽어 분석 후 폐기
+- API 키와 이미지 바이트를 로그에 기록하지 않음
+- Gemini 프롬프트에서 예약번호, QR/바코드, 여권, 카드번호, 이름, 연락처를 무시하도록 지시
+
+#### 이번 단계 범위
+
+- 백엔드 API, 권한(Owner/Editor), 파일 검증, Gemini 호출, 구조화 응답, pytest mock 테스트
+
+#### 이번 단계 제외 범위
+
+- 업로드 UI/프론트엔드 연결
+- OCR(Tesseract), OpenAI/Claude/Grok 연동
+- 외부 사이트 크롤링/Playwright/Selenium
+- 이미지 장기 보관, 사용자별 API 키 저장, 실제 예약/결제
+
 #### 제외 범위
 
 - 외부 사이트 HTML 크롤링, Playwright/Selenium 자동 수집
 - 스크린샷/PDF/이메일 업로드 및 OCR(Tesseract 포함)
-- Gemini/OpenAI/Claude/Grok 등 LLM API 호출
+- OpenAI/Claude/Grok 등 타 LLM API 호출
 - 실제 예약/결제 처리 및 예약번호·카드정보 처리
 
 #### 개인정보 주의사항
@@ -81,7 +115,7 @@
 - SQLite WAL 모드, busy timeout, foreign key 활성화
 - SQLAlchemy ORM, Alembic 마이그레이션, Pydantic 검증
 - pytest + in-memory SQLite 기반 자동 테스트
-- 인증, 여행, 일정, 초대, 권한, 재설정, 장소 후보, 장소 검색 테스트
+- 인증, 여행, 일정, 초대, 권한, 재설정, 장소 후보, 장소 검색, 예약 스크린샷 분석 테스트
 
 ## 다음 구현 목표와 범위
 
@@ -199,6 +233,9 @@ SMTP_USE_TLS=true
 # 장소 검색
 GOOGLE_MAPS_API_KEY=
 KAKAO_REST_API_KEY=
+
+# 예약 스크린샷 분석
+GEMINI_API_KEY=
 ```
 
 > 실제 `.env`에는 SMTP 앱 비밀번호, `SECRET_KEY`, Google·Kakao API 키가 들어갈 수 있습니다. `.env`는 Git에 커밋하지 않으며, `.env.example`에는 실제 키·토큰·이메일 주소를 입력하지 않습니다.
