@@ -93,6 +93,56 @@
   </form>
   <p id="item-form-error" class="error-text"></p>
 </div>
+<section id="reservation-image-panel" class="card" style="display:none">
+  <div class="section-header">
+    <div>
+      <h2>예약 스크린샷으로 분석</h2>
+      <p class="muted small">
+        예약 확정 화면 스크린샷을 분석하여 아래 외부 예약 정보 폼을 자동으로 채웁니다.
+      </p>
+    </div>
+  </div>
+
+  <form id="reservation-image-form" class="form">
+    <label>
+      예약 스크린샷 (PNG 또는 JPG, 최대 5MB)
+      <input
+        type="file"
+        id="reservation-image-file"
+        name="file"
+        accept="image/png,image/jpeg"
+        required
+      />
+    </label>
+    <p id="reservation-image-filename" class="muted small">선택된 파일 없음</p>
+
+    <label>
+      선택: 예약 링크 입력
+      <input
+        type="url"
+        id="reservation-image-booking-url"
+        name="booking_url"
+        placeholder="예: https://www.agoda.com/..."
+      />
+    </label>
+
+    <div class="muted small" style="background: var(--color-bg); padding: 0.75rem; border-radius: 6px; line-height: 1.5;">
+      <strong>안내:</strong><br>
+      - 예약번호, QR 코드, 바코드, 여권번호, 카드·결제 정보, 전화번호, 이메일, 실명은 가린 뒤 업로드하세요.<br>
+      - 업로드된 원본 이미지는 앱 DB나 서버 디스크에 저장하지 않습니다.<br>
+      - AI가 추출한 결과는 초안이므로 반드시 원본 예약 정보와 대조하세요.
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" id="reservation-image-submit-btn">스크린샷 분석</button>
+    </div>
+  </form>
+
+  <p id="reservation-image-error" class="error-text"></p>
+  <div id="reservation-image-success" style="display:none; margin-top: 0.75rem; color: #16a34a; font-size: 0.9rem;"></div>
+  <div id="reservation-image-warnings" style="display:none; margin-top: 0.5rem; font-size: 0.85rem; color: #d97706;"></div>
+</section>
+
 <section id="external-booking-panel" class="card" style="display:none">
   <div class="section-header">
     <div>
@@ -705,8 +755,14 @@ function canEditPlaces() {
 }
 
 function setExternalBookingPanelVisibility(canEdit) {
+  const imagePanel = document.getElementById("reservation-image-panel");
   const panel = document.getElementById("external-booking-panel");
-  panel.style.display = canEdit ? "block" : "none";
+  if (imagePanel) {
+    imagePanel.style.display = canEdit ? "block" : "none";
+  }
+  if (panel) {
+    panel.style.display = canEdit ? "block" : "none";
+  }
 }
 
 function addOneDayToDatetimeLocal(value) {
@@ -1716,6 +1772,196 @@ document.getElementById("external-import-checkin-btn").addEventListener("click",
 document.getElementById("external-import-checkout-btn").addEventListener("click", () => {
   importAccommodationDraftToItemForm("checkout");
 });
+
+const reservationImageFileInput = document.getElementById("reservation-image-file");
+const reservationImageFilenameEl = document.getElementById("reservation-image-filename");
+const reservationImageForm = document.getElementById("reservation-image-form");
+const reservationImageSubmitBtn = document.getElementById("reservation-image-submit-btn");
+const reservationImageErrorEl = document.getElementById("reservation-image-error");
+const reservationImageSuccessEl = document.getElementById("reservation-image-success");
+const reservationImageWarningsEl = document.getElementById("reservation-image-warnings");
+
+if (reservationImageFileInput) {
+  reservationImageFileInput.addEventListener("change", () => {
+    reservationImageErrorEl.textContent = "";
+    reservationImageSuccessEl.style.display = "none";
+    reservationImageSuccessEl.textContent = "";
+    reservationImageWarningsEl.style.display = "none";
+    reservationImageWarningsEl.innerHTML = "";
+
+    const file = reservationImageFileInput.files?.[0];
+    if (!file) {
+      reservationImageFilenameEl.textContent = "선택된 파일 없음";
+      return;
+    }
+
+    reservationImageFilenameEl.textContent = `선택된 파일: ${file.name} (${Math.round(file.size / 1024)} KB)`;
+
+    const allowedTypes = ["image/png", "image/jpeg"];
+    if (!allowedTypes.includes(file.type)) {
+      reservationImageErrorEl.textContent = "PNG 또는 JPG 이미지만 업로드 가능합니다.";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      reservationImageErrorEl.textContent = "파일 크기는 5MB 이하여야 합니다.";
+      return;
+    }
+  });
+}
+
+if (reservationImageForm) {
+  reservationImageForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    reservationImageErrorEl.textContent = "";
+    reservationImageSuccessEl.style.display = "none";
+    reservationImageSuccessEl.textContent = "";
+    reservationImageWarningsEl.style.display = "none";
+    reservationImageWarningsEl.innerHTML = "";
+
+    const file = reservationImageFileInput.files?.[0];
+    if (!file) {
+      reservationImageErrorEl.textContent = "예약 스크린샷 파일을 선택하세요.";
+      return;
+    }
+
+    const allowedTypes = ["image/png", "image/jpeg"];
+    if (!allowedTypes.includes(file.type)) {
+      reservationImageErrorEl.textContent = "PNG 또는 JPG 이미지만 업로드 가능합니다.";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      reservationImageErrorEl.textContent = "파일 크기는 5MB 이하여야 합니다.";
+      return;
+    }
+
+    const bookingUrlInput = document.getElementById("reservation-image-booking-url");
+    const bookingUrl = bookingUrlInput?.value.trim() || "";
+
+    const formData = new FormData();
+    formData.append("file", file);
+    if (bookingUrl) {
+      formData.append("booking_url", bookingUrl);
+    }
+
+    const originalBtnText = reservationImageSubmitBtn.textContent;
+    reservationImageSubmitBtn.disabled = true;
+    reservationImageSubmitBtn.textContent = "분석 중...";
+
+    try {
+      const res = await apiFetch(
+        `/api/trips/${TRIP_ID}/reservation-imports/analyze-image`,
+        {
+          method: "POST",
+          headers: {},
+          body: formData,
+        }
+      );
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        reservationImageErrorEl.textContent = data.detail || "스크린샷 분석에 실패했습니다.";
+        return;
+      }
+
+      applyReservationAnalysisResult(data, bookingUrl);
+
+      reservationImageSuccessEl.textContent =
+        "분석 결과를 외부 예약 정보 폼에 채웠습니다. 날짜, 시간, 장소, 가격, 예약 링크를 원본과 대조한 뒤 일정으로 가져오세요.";
+      reservationImageSuccessEl.style.display = "block";
+
+      if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+        reservationImageWarningsEl.innerHTML = `
+          <strong>주의사항:</strong>
+          <ul>
+            ${data.warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("")}
+          </ul>
+        `;
+        reservationImageWarningsEl.style.display = "block";
+      }
+
+      const externalPanel = document.getElementById("external-booking-panel");
+      if (externalPanel) {
+        externalPanel.scrollIntoView({ behavior: "smooth" });
+      }
+    } catch (err) {
+      reservationImageErrorEl.textContent = "스크린샷 분석 중 네트워크 오류가 발생했습니다.";
+    } finally {
+      reservationImageSubmitBtn.disabled = false;
+      reservationImageSubmitBtn.textContent = originalBtnText;
+    }
+  });
+}
+
+function applyReservationAnalysisResult(result, inputBookingUrl) {
+  const form = document.getElementById("external-booking-form");
+  if (!form) return;
+
+  const targetBookingUrl = result.booking_url || inputBookingUrl || "";
+  if (targetBookingUrl) {
+    form.booking_url.value = targetBookingUrl;
+  }
+
+  if (result.provider_name) {
+    form.provider.value = result.provider_name;
+  }
+
+  if (result.title) {
+    form.title.value = result.title;
+  }
+
+  if (result.price_amount !== null && result.price_amount !== undefined) {
+    form.price.value = String(result.price_amount);
+  }
+
+  if (result.currency) {
+    form.currency.value = result.currency;
+  }
+
+  if (result.memo) {
+    form.memo.value = result.memo;
+  }
+
+  if (result.kind === "transport" || result.kind === "accommodation") {
+    form.kind.value = result.kind;
+  }
+
+  externalAccommodationCheckoutManuallyEdited = false;
+  toggleExternalBookingFields();
+
+  if (result.kind === "transport") {
+    if (result.transport_mode) {
+      form.transport_type.value = result.transport_mode;
+    }
+    if (result.departure_name) {
+      form.departure_name.value = result.departure_name;
+    }
+    if (result.arrival_name) {
+      form.arrival_name.value = result.arrival_name;
+    }
+    if (result.departure_at) {
+      form.departure_at.value = toDatetimeLocalValue(result.departure_at);
+    }
+    if (result.arrival_at) {
+      form.arrival_at.value = toDatetimeLocalValue(result.arrival_at);
+    }
+  } else if (result.kind === "accommodation") {
+    if (result.accommodation_name) {
+      form.accommodation_name.value = result.accommodation_name;
+    }
+    if (result.checkin_at) {
+      form.checkin_at.value = toDatetimeLocalValue(result.checkin_at);
+    }
+    if (result.checkout_at) {
+      form.checkout_at.value = toDatetimeLocalValue(result.checkout_at);
+      externalAccommodationCheckoutManuallyEdited = true;
+    }
+    syncAccommodationCheckoutFromCheckin();
+  }
+}
 
 toggleExternalBookingFields();
 

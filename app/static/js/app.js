@@ -1,6 +1,18 @@
 async function apiFetch(url, options = {}) {
   const opts = Object.assign({ credentials: "include" }, options);
-  opts.headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
+  const headers = Object.assign({}, options.headers || {});
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+
+  if (!isFormData) {
+    const hasContentType = Object.keys(headers).some(
+      (key) => key.toLowerCase() === "content-type"
+    );
+    if (!hasContentType) {
+      headers["Content-Type"] = "application/json";
+    }
+  }
+
+  opts.headers = headers;
   return fetch(url, opts);
 }
 

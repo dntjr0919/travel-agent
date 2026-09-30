@@ -126,6 +126,54 @@ def test_viewer_cannot_analyze_reservation_image(client):
     assert res.json()["code"] == "FORBIDDEN"
 
 
+def test_editor_can_analyze_reservation_image(client, monkeypatch):
+    register_and_login(client, "owner-image-editor-test@example.com")
+    trip = create_trip(client)
+
+    invitation = invite_member(client, trip["id"], "editor-image@example.com", "editor")
+    token = extract_token(invitation["invite_url"])
+    client.post("/api/auth/logout")
+
+    register_and_login(client, "editor-image@example.com")
+    client.post(f"/api/invitations/{token}/accept")
+
+    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+        return json.dumps(
+            {
+                "kind": "transport",
+                "transport_mode": "flight",
+                "title": "[항공] 대한항공 KE703",
+                "provider_name": "대한항공",
+                "service_number": "KE703",
+                "departure_name": "인천국제공항",
+                "arrival_name": "나리타국제공항",
+                "departure_at": "2026-10-10T09:00:00+09:00",
+                "arrival_at": "2026-10-10T11:20:00+09:00",
+                "accommodation_name": None,
+                "checkin_at": None,
+                "checkout_at": None,
+                "price_amount": 285000,
+                "currency": "KRW",
+                "booking_url": None,
+                "memo": "위탁수하물 15kg 포함",
+                "warnings": ["AI가 추출한 초안입니다. 원본 예약 정보와 대조한 뒤 저장하세요."],
+            }
+        )
+
+    monkeypatch.setattr(
+        "app.services.reservation_import_service._get_gemini_json_text",
+        fake_gemini_json_text,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/reservation-imports/analyze-image",
+        files={"file": ("reservation.png", b"\x89PNG\r\n\x1a\n123", "image/png")},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["kind"] == "transport"
+
+
 def test_analyze_reservation_image_rejects_invalid_mime_type(client):
     register_and_login(client, "owner-image-mime@example.com")
     trip = create_trip(client)
@@ -173,3 +221,157 @@ def test_analyze_reservation_image_requires_gemini_api_key(client):
 
     assert res.status_code == 503
     assert res.json()["code"] == "RESERVATION_IMPORT_NOT_CONFIGURED"
+
+
+def test_analyze_reservation_image_timezone_naive_adjusted_to_seoul(client, monkeypatch):
+    register_and_login(client, "owner-image-tz-naive@example.com")
+    trip = create_trip(client)
+
+    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+        return json.dumps(
+            {
+                "kind": "transportation",
+                "transport_mode": "flight",
+                "title": "[항공] 제주항공 7C101",
+                "departure_at": "2026-10-10T09:00:00",
+                "arrival_at": "2026-10-10T10:15:00",
+            }
+        )
+
+    monkeypatch.setattr(
+        "app.services.reservation_import_service._get_gemini_json_text",
+        fake_gemini_json_text,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/reservation-imports/analyze-image",
+        files={"file": ("reservation.png", b"\x89PNG\r\n\x1a\n123", "image/png")},
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["kind"] == "transport"
+    assert data["departure_at"].endswith("+09:00")
+    assert data["arrival_at"].endswith("+09:00")
+    assert any("Asia/Seoul" in w for w in data["warnings"])
+
+
+def test_analyze_reservation_image_accommodation_naive_and_normalization(client, monkeypatch):
+    register_and_login(client, "owner-image-acc-naive@example.com")
+    trip = create_trip(client)
+
+    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+        return json.dumps(
+            {
+                "kind": "hotel",
+                "title": "[숙소] 서울호텔",
+                "accommodation_name": "서울호텔",
+                "checkin_at": "2026-10-10T15:00:00",
+                "checkout_at": "2026-10-11T11:00:00",
+            }
+        )
+
+    monkeypatch.setattr(
+        "app.services.reservation_import_service._get_gemini_json_text",
+        fake_gemini_json_text,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/reservation-imports/analyze-image",
+        files={"file": ("reservation.png", b"\x89PNG\r\n\x1a\n123", "image/png")},
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["kind"] == "accommodation"
+    assert data["checkin_at"].endswith("+09:00")
+    assert data["checkout_at"].endswith("+09:00")
+    assert any("Asia/Seoul" in w for w in data["warnings"])
+
+
+def test_analyze_reservation_image_preserves_existing_timezone(client, monkeypatch):
+    register_and_login(client, "owner-image-tz-aware@example.com")
+    trip = create_trip(client)
+
+    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+        return json.dumps(
+            {
+                "kind": "transport",
+                "transport_mode": "rail",
+                "title": "[기차] KTX 001",
+                "departure_at": "2026-10-10T09:00:00+00:00",
+                "arrival_at": "2026-10-10T11:45:00+00:00",
+            }
+        )
+
+    monkeypatch.setattr(
+        "app.services.reservation_import_service._get_gemini_json_text",
+        fake_gemini_json_text,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/reservation-imports/analyze-image",
+        files={"file": ("reservation.png", b"\x89PNG\r\n\x1a\n123", "image/png")},
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["transport_mode"] == "train"
+    assert data["departure_at"].endswith("+00:00") or data["departure_at"].endswith("Z")
+    assert not any("Asia/Seoul" in w for w in data["warnings"])
+
+
+def test_analyze_reservation_image_strips_markdown_code_fence(client, monkeypatch):
+    register_and_login(client, "owner-image-fence@example.com")
+    trip = create_trip(client)
+
+    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+        payload = {
+            "kind": "transport",
+            "transport_mode": "bus",
+            "title": "[고속버스] 서울-부산",
+            "departure_at": "2026-10-10T09:00:00+09:00",
+        }
+        return f"```json\n{json.dumps(payload)}\n```"
+
+    monkeypatch.setattr(
+        "app.services.reservation_import_service._get_gemini_json_text",
+        fake_gemini_json_text,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/reservation-imports/analyze-image",
+        files={"file": ("reservation.png", b"\x89PNG\r\n\x1a\n123", "image/png")},
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["kind"] == "transport"
+    assert data["transport_mode"] == "intercity_bus"
+
+
+def test_analyze_reservation_image_invalid_datetime_returns_502(client, monkeypatch):
+    register_and_login(client, "owner-image-invalid-dt@example.com")
+    trip = create_trip(client)
+
+    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+        return json.dumps(
+            {
+                "kind": "transport",
+                "title": "Invalid Datetime",
+                "departure_at": "not-a-datetime",
+            }
+        )
+
+    monkeypatch.setattr(
+        "app.services.reservation_import_service._get_gemini_json_text",
+        fake_gemini_json_text,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/reservation-imports/analyze-image",
+        files={"file": ("reservation.png", b"\x89PNG\r\n\x1a\n123", "image/png")},
+    )
+
+    assert res.status_code == 502
+    assert res.json()["code"] == "RESERVATION_IMPORT_INVALID_RESPONSE"
