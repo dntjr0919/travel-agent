@@ -320,6 +320,7 @@ let currentTrip = null;
 let presenceSocket = null;
 let presenceReconnectTimer = null;
 let itemEndAtManuallyEdited = false;
+let externalAccommodationCheckoutManuallyEdited = false;
 
 function toDatetimeLocalValue(iso) {
   if (!iso) return "";
@@ -383,6 +384,25 @@ function renderMemoWithMapLink(memo) {
   const lines = memo.split("\n");
   const renderedLines = lines.map((line) => {
     const trimmed = line.trim();
+
+    if (trimmed.startsWith("예약 링크: ")) {
+      const url = trimmed.slice("예약 링크: ".length).trim();
+
+      if (url.startsWith("https://") || url.startsWith("http://")) {
+        return `
+          예약:
+          <a
+            class="map-link"
+            href="${escapeHtml(url)}"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="${escapeHtml(url)}"
+          >
+            예약 열기 ↗
+          </a>
+        `;
+      }
+    }
 
     if (trimmed.startsWith("지도: ")) {
       const url = trimmed.slice("지도: ".length).trim();
@@ -687,6 +707,59 @@ function setExternalBookingPanelVisibility(canEdit) {
   panel.style.display = canEdit ? "block" : "none";
 }
 
+function addOneDayToDatetimeLocal(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  date.setDate(date.getDate() + 1);
+
+  const pad = (number) => String(number).padStart(2, "0");
+
+  return (
+    `${date.getFullYear()}-` +
+    `${pad(date.getMonth() + 1)}-` +
+    `${pad(date.getDate())}T` +
+    `${pad(date.getHours())}:` +
+    `${pad(date.getMinutes())}`
+  );
+}
+
+function syncAccommodationCheckoutFromCheckin() {
+  const form = document.getElementById("external-booking-form");
+  const checkinAt = form.checkin_at.value;
+  const checkoutInput = form.checkout_at;
+
+  if (!checkinAt) {
+    checkoutInput.min = "";
+    return;
+  }
+
+  const suggestedCheckout = addOneDayToDatetimeLocal(checkinAt);
+
+  checkoutInput.min = suggestedCheckout;
+
+  if (!checkoutInput.value) {
+    checkoutInput.value = suggestedCheckout;
+    return;
+  }
+
+  if (!externalAccommodationCheckoutManuallyEdited) {
+    checkoutInput.value = suggestedCheckout;
+    return;
+  }
+
+  if (checkoutInput.value < suggestedCheckout) {
+    checkoutInput.value = suggestedCheckout;
+  }
+}
+
 function toggleExternalBookingFields() {
   const form = document.getElementById("external-booking-form");
   const kind = form.kind.value;
@@ -695,6 +768,10 @@ function toggleExternalBookingFields() {
     kind === "transport" ? "block" : "none";
   document.getElementById("external-accommodation-fields").style.display =
     kind === "accommodation" ? "block" : "none";
+
+  if (kind === "accommodation") {
+    syncAccommodationCheckoutFromCheckin();
+  }
 }
 
 function parseExternalBookingUrl(rawUrl) {
@@ -742,7 +819,9 @@ function applyExternalBookingHints() {
 
   form.provider.value = parsed.provider;
   form.kind.value = parsed.kind;
+  externalAccommodationCheckoutManuallyEdited = false;
   toggleExternalBookingFields();
+  syncAccommodationCheckoutFromCheckin();
   return true;
 }
 
@@ -1494,6 +1573,10 @@ document.getElementById("place-search-form").addEventListener("submit", async (e
 });
 
 document.getElementById("external-booking-kind").addEventListener("change", () => {
+  if (document.getElementById("external-booking-kind").value !== "accommodation") {
+    externalAccommodationCheckoutManuallyEdited = false;
+  }
+
   toggleExternalBookingFields();
 });
 
@@ -1501,6 +1584,28 @@ document
   .querySelector('#external-booking-form input[name="booking_url"]')
   .addEventListener("change", () => {
     applyExternalBookingHints();
+  });
+
+document
+  .querySelector('#external-booking-form input[name="checkin_at"]')
+  .addEventListener("change", () => {
+    syncAccommodationCheckoutFromCheckin();
+  });
+
+document
+  .querySelector('#external-booking-form input[name="checkout_at"]')
+  .addEventListener("change", () => {
+    const form = document.getElementById("external-booking-form");
+
+    externalAccommodationCheckoutManuallyEdited = true;
+
+    if (
+      form.checkin_at.value &&
+      form.checkout_at.value &&
+      form.checkout_at.value <= form.checkin_at.value
+    ) {
+      form.checkout_at.value = addOneDayToDatetimeLocal(form.checkin_at.value);
+    }
   });
 
 document.getElementById("external-booking-form").addEventListener("submit", (event) => {
