@@ -2,15 +2,76 @@
 
 여행 일정을 함께 계획하고 공유하는 협업 웹앱의 MVP입니다. 여행 생성, 날짜/시간별 일정 관리, 초대를 통한 공동 작업, 낙관적 잠금(optimistic locking) 기반 수정 충돌 감지를 지원합니다.
 
-## 현재 범위에서 다루지 않는 것
+## 현재 구현한 기능
 
-- 여행지 정보 크롤링(Playwright 등), 가격 비교, 외부 API 연동
-- 초대 이메일 발송, 일정 변경 알림, 푸시 알림
-- 지도, 예약, 결제 기능
-- 일정 생성·수정·삭제 결과를 다른 사용자 화면에 즉시 반영하는 실시간 동기화
+### 계정과 보안
+
+- 이메일·비밀번호 기반 회원가입, 로그인, 로그아웃
+- `bcrypt` 비밀번호 해시와 `itsdangerous` 서명 기반 HttpOnly 세션 쿠키
+- 실제 SMTP 비밀번호 재설정 이메일 발송
+- SHA-256 해시 기반 재설정 토큰 저장, 만료 시간 및 1회 사용 처리
+- `.env`와 `.gitignore`를 이용한 API 키·SMTP 비밀번호·비밀 설정 분리
+
+### 여행 일정과 협업
+
+- 여행 생성, 조회, 수정, 삭제
+- 날짜·시간·장소·카테고리·메모 기반 일정 CRUD
+- 여행 기간 및 일정 시간 범위 검증
+- 일정 버전 기반 낙관적 잠금으로 동시 수정 충돌 감지
+- Owner, Editor, Viewer 역할 기반 권한 관리
+- 이메일 초대 링크 생성·수락, 이메일 일치 확인, 초대 만료 및 1회 사용 처리
+- 여행 상세 페이지 접속자 이니셜 아이콘 실시간 표시(WebSocket)
+- 동일 사용자의 여러 탭을 하나의 접속자로 처리
+
+### 장소 검색과 후보 보관함
+
+- 해외 장소 검색: Google Places API (New)
+- 국내 장소 검색: Kakao Local API
+- 여행별 장소 후보 보관함 저장·조회·메모 수정·삭제
+- 동일 여행에서 공급자와 외부 장소 ID가 같은 후보의 중복 저장 방지
+- Owner/Editor는 후보를 저장·수정·삭제하고, Viewer는 검색·조회만 가능
+- 검색 결과와 저장 후보의 외부 지도 링크 제공
+
+### 개발과 검증
+
+- SQLite WAL 모드, busy timeout, foreign key 활성화
+- SQLAlchemy ORM, Alembic 마이그레이션, Pydantic 검증
+- pytest + in-memory SQLite 기반 자동 테스트
+- 인증, 여행, 일정, 초대, 권한, 재설정, 장소 후보, 장소 검색 테스트
+
+## 다음 구현 목표와 범위
+
+### 우선 구현할 기능
+
+- 저장한 장소 후보를 기존 일정 생성 폼으로 가져와 일정으로 추가
+  - Owner와 Editor만 사용할 수 있음
+  - 장소명, 카테고리, 주소, 지도 링크, 후보 메모를 일정 입력 폼에 자동으로 채움
+  - 시작·종료 시각은 사용자가 직접 입력
+  - 일정 저장 후에도 장소 후보는 보관함에 유지
+  - 첫 구현에서는 장소 후보 ID·좌표를 일정 테이블에 별도로 연결하지 않고 메모에 주소와 지도 링크를 기록
+- 장소 후보별 우선순위, 좋아요 또는 구성원 투표
+- 숙소·항공·철도·버스 후보 보관함과 조건 비교
+- 후보별 가격, 통화, 세금 포함 여부, 취소 조건, 조회 시각 기록
+- 예약 사이트의 공식 제휴 API 또는 딥링크 기반 예약 페이지 이동
+- 일정 생성·수정·삭제 시 같은 여행 참여자 화면을 자동 갱신하는 WebSocket 이벤트
+
+### 이후 검토할 기능
+
+- Google Maps/Kakao Map 지도 임베드와 장소 후보 지도 표시
+- 장소 좌표를 이용한 거리 계산과 여행 동선 추천
+- 초대 이메일 발송, 일정 변경 이메일·푸시 알림
+- 운영 환경 HTTPS, `secure=True` 쿠키, 서버 IP 기반 API 키 제한
+- 다중 서버 환경의 Redis 기반 WebSocket 접속 상태 공유
+- 여행지 추천, 외부 API 기반 가격 비교
+
+### 현재 의도적으로 제외한 기능
+
+- Playwright 등을 이용한 Trip.com, Agoda 등 예약 사이트의 무단 화면 크롤링
+- 앱 안에서 실제 예약·결제 처리
 - Google Docs 수준의 문자 단위 실시간 공동 편집
+- 별도 대규모 작업 큐, Redis, Docker, Kubernetes 도입
 
-> 비밀번호 재설정 이메일 발송과 여행 상세 페이지의 공동 작업자 접속 표시(WebSocket)는 구현되어 있습니다.
+> 예약 가격은 공급자별 세금, 통화, 취소 조건, 회원가, 재고가 함께 달라집니다. 따라서 자동 비교는 공식 제휴 API 또는 제공자가 허용한 데이터 연동 수단을 확보한 뒤 구현합니다.
 
 ## 기술 스택
 
@@ -32,27 +93,30 @@
 
 ## 프로젝트 구조
 
-```
+```text
 app/
-  main.py                 # FastAPI 앱 생성, 라우터/정적 파일 등록, 예외 핸들러
+  main.py                  # FastAPI 앱, 라우터/정적 파일/예외 처리 등록
   core/
-    config.py             # 환경변수 기반 설정 (pydantic-settings)
-    database.py           # SQLAlchemy 엔진/세션, WAL+busy_timeout PRAGMA, TZDateTime 타입
-    security.py           # 비밀번호 해싱, 세션 쿠키 서명/검증
-    presence.py           # 여행별 WebSocket 접속 상태 관리
-    dependencies.py       # get_current_user 등 FastAPI Depends
-    errors.py             # {detail, code} 형태의 공통 예외
-  models/                 # SQLAlchemy ORM 모델 (User, Trip, TripMember, Invitation, ItineraryItem)
-  schemas/                # Pydantic 요청/응답 스키마
-  routers/                # API 라우터(auth, trips, itineraries, collaborations),WebSocket 라우터(presence), 페이지 라우터(pages)라우터(pages)
-  services/                # 비즈니스 로직, 권한 검사(permission_service), SMTP 이메일 발송(email_service)
-  templates/              # Jinja2 HTML 템플릿
-  static/
-    css/app.css
-    js/app.js             # 공통 fetch 헬퍼 + 각 화면 스크립트는 템플릿 내 인라인
-tests/                    # pytest (in-memory SQLite로 라우터까지 테스트)
-alembic/                  # 마이그레이션
-.env.example
+    config.py              # .env 기반 설정
+    database.py            # SQLAlchemy, SQLite WAL, TZDateTime
+    security.py            # 비밀번호 해시, 세션 쿠키 서명·검증
+    dependencies.py        # 로그인 사용자 의존성
+    presence.py            # 여행별 WebSocket 접속 상태
+    errors.py              # 공통 오류 응답
+  models/                  # User, Trip, TripMember, Invitation, ItineraryItem, PlaceCandidate
+  schemas/                 # API 요청·응답 스키마
+  routers/                 # auth, trips, itineraries, collaborations, places, presence, pages
+  services/
+    permission_service.py  # 역할·접근 권한 검사
+    email_service.py       # SMTP 비밀번호 재설정 이메일
+    place_search_service.py
+    place_candidate_service.py
+    map_providers/         # Google Places, Kakao Local 제공자 어댑터
+  templates/               # Jinja2 HTML 화면
+  static/                  # 공통 CSS, JavaScript
+tests/                     # pytest + in-memory SQLite
+alembic/                   # DB 마이그레이션
+.env.example               # 공유 가능한 환경변수 예시
 requirements.txt
 ```
 
@@ -73,47 +137,33 @@ Copy-Item .env.example .env
 # 필요 시 .env 안의 SECRET_KEY 등을 수정
 ```
 
-`.env.example` 내용:
+`.env.example`의 핵심 항목:
 
-```
-# SQLite 파일 DB 경로 (SQLAlchemy URL 형식)
+```env
 DATABASE_URL=sqlite:///./travel_planner.db
-
-# 세션 쿠키 서명에 사용하는 비밀키. 운영 환경에서는 반드시 무작위 긴 문자열로 교체할 것.
 SECRET_KEY=change-this-to-a-long-random-secret-key
-
-# 세션 쿠키 만료 시간(초). 기본 7일.
 SESSION_MAX_AGE_SECONDS=604800
 
-# 초대 링크 만료 기간(시간). 기본 7일(168시간).
 INVITATION_EXPIRE_HOURS=168
-
-# 초대 수락 링크를 만들 때 사용할 프론트엔드 베이스 URL
-APP_BASE_URL=http://127.0.0.1:8000
-```
-# 비밀번호 재설정 링크 만료 기간(분). 기본 30분.
 PASSWORD_RESET_EXPIRE_MINUTES=30
+APP_BASE_URL=http://127.0.0.1:8000
 
-# ==================================================
-# 이메일(SMTP) 발송 설정
-# ==================================================
-
-# 실제 이메일 발송 기능 사용 여부
+# SMTP 비밀번호 재설정 이메일
 EMAIL_ENABLED=false
-
-# Gmail 예시: smtp.gmail.com / 587 / TLS
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=your-email@example.com
-
-# 실제 앱 비밀번호는 .env 파일에만 입력하고 Git에 올리지 않습니다.
 SMTP_PASSWORD=replace-with-app-password
-
 SMTP_FROM_EMAIL=your-email@example.com
 SMTP_FROM_NAME=Travel Planner
 SMTP_USE_TLS=true
 
-> `.env`에는 SMTP 앱 비밀번호와 `SECRET_KEY` 등 민감 정보가 들어갈 수 있으므로 Git에 커밋하면 안 됩니다. `.env.example`에는 실제 이메일 주소, 앱 비밀번호, 토큰을 입력하지 않습니다.
+# 장소 검색
+GOOGLE_MAPS_API_KEY=
+KAKAO_REST_API_KEY=
+```
+
+> 실제 `.env`에는 SMTP 앱 비밀번호, `SECRET_KEY`, Google·Kakao API 키가 들어갈 수 있습니다. `.env`는 Git에 커밋하지 않으며, `.env.example`에는 실제 키·토큰·이메일 주소를 입력하지 않습니다.
 
 ### 3. Alembic 마이그레이션
 
@@ -142,21 +192,27 @@ SMTP_USE_TLS=true
 
 테스트는 요청마다 in-memory SQLite + FastAPI `TestClient`를 사용하며, 실제 `.env`/`travel_planner.db`에 영향을 주지 않습니다.
 
-## 수동 테스트 시나리오 (브라우저)
+## 수동 테스트 시나리오
 
-1. `/register`에서 Owner 계정(A) 가입 → 자동 로그인 → `/trips`로 이동.
-2. `/trips/new`에서 여행 생성 (예: 2026-11-01 ~ 2026-11-05, Asia/Seoul) → 상세 페이지로 이동.
-3. 상세 페이지에서 "일정 추가"로 항목 2~3개 생성 (날짜/시간, 카테고리, 장소, 메모 입력).
-4. "구성원 관리" 페이지에서 다른 이메일(B)로 Editor 초대 생성 → 화면에 표시된 개발용 초대 링크 복사.
-5. 시크릿 창(또는 다른 브라우저)에서 이메일 B로 회원가입/로그인 후, 복사한 `/invitations/{token}` 링크로 접속 → 초대 수락 → 여행 상세로 이동해 일정이 보이는지 확인.
-6. B 계정(Editor)으로 일정 하나를 열어 수정 폼을 띄운 뒤, 저장하지 않은 상태로 A 계정에서 같은 일정을 먼저 수정.
-7. B 계정에서 저장 시도 → 409 충돌 배너와 "최신 내용 다시 불러오기" 버튼이 나타나는지 확인.
-8. A 계정에서 B의 역할을 Viewer로 변경 → B로 새로고침 시 일정 추가/수정/삭제 버튼이 사라지고 API 직접 호출 시 403이 오는지 확인.
-9. A 계정에서 여행 삭제 후 목록에서 사라지는지 확인.
+1. Owner 계정을 가입하고 여행을 생성한다.
+2. 일정 2~3개를 추가하고, 같은 일정을 두 창에서 수정해 충돌 안내가 표시되는지 확인한다.
+3. 다른 계정을 Editor로 초대하고 초대를 수락한다.
+4. Owner와 Editor가 같은 여행 상세 페이지를 열어 접속자 이니셜 아이콘이 표시되는지 확인한다.
+5. 국내(Kakao)와 해외(Google) 장소를 각각 검색하고 장소 후보로 저장한다.
+6. Viewer 권한 계정으로 접속해 장소 검색·후보 조회는 가능하지만 후보 저장·수정·삭제, 후보의 일정 추가, 일정 수정은 불가능한지 확인한다.
+7. 비밀번호 재설정을 요청하고 실제 이메일 링크로 비밀번호를 변경한 뒤 새 비밀번호로 로그인한다.
 
 ## 필수 오류 코드
 
-`AUTH_REQUIRED`, `INVALID_CREDENTIALS`, `EMAIL_ALREADY_EXISTS`, `TRIP_NOT_FOUND`, `ITINERARY_NOT_FOUND`, `FORBIDDEN`, `INVALID_DATE_RANGE`, `INVALID_TIME_RANGE`, `INVITATION_NOT_FOUND`, `INVITATION_EXPIRED`, `INVITATION_EMAIL_MISMATCH`, `ITINERARY_VERSION_CONFLICT`, `PASSWORD_RESET_TOKEN_INVALID`, `PASSWORD_RESET_TOKEN_EXPIRED` 모두 `{"detail": "...", "code": "..."}` 형태로 반환됩니다.
+모든 API 오류는 `{"detail": "...", "code": "..."}` 형태로 반환됩니다.
+
+- 인증: `AUTH_REQUIRED`, `INVALID_CREDENTIALS`, `EMAIL_ALREADY_EXISTS`
+- 여행·권한: `TRIP_NOT_FOUND`, `FORBIDDEN`, `INVALID_DATE_RANGE`
+- 일정: `ITINERARY_NOT_FOUND`, `INVALID_TIME_RANGE`, `ITINERARY_VERSION_CONFLICT`
+- 초대: `INVITATION_NOT_FOUND`, `INVITATION_EXPIRED`, `INVITATION_EMAIL_MISMATCH`
+- 비밀번호 재설정: `PASSWORD_RESET_TOKEN_INVALID`, `PASSWORD_RESET_TOKEN_EXPIRED`
+- 장소 후보: `PLACE_CANDIDATE_NOT_FOUND`, `PLACE_CANDIDATE_ALREADY_EXISTS`
+- 장소 검색: `PLACE_SEARCH_QUERY_TOO_SHORT`, `INVALID_PLACE_SEARCH_SCOPE`, `PLACE_SEARCH_NOT_CONFIGURED`, `PLACE_SEARCH_TIMEOUT`, `PLACE_SEARCH_PROVIDER_ERROR`
 
 ## 비밀번호 재설정 이메일
 
@@ -201,79 +257,3 @@ SMTP_USE_TLS=true
 - 일정 날짜가 여행 기간을 벗어나는지 검사할 때는 일정의 시각을 여행의 `timezone`으로 변환한 날짜(day)를 기준으로 여행 `start_date` ~ `end_date` 범위와 비교.
 - SQLite는 timezone-aware 컬럼을 그대로 지원하지 않으므로, `TZDateTime` 커스텀 타입을 만들어 저장 시 UTC로 정규화하고 조회 시 UTC 오프셋을 다시 부여함(다른 오프셋으로 저장된 값도 일관되게 비교 가능).
 
-## 다음 단계 확장 지점
-
-- **여행지 크롤링 / 가격 비교**: `app/services/` 아래에 `crawling_service.py` 또는 `pricing_service.py`를 신설하고, 별도의 백그라운드 작업(Celery/APScheduler 등)에서 실행 후 결과를 `ItineraryItem`이나 신규 `PlaceSuggestion` 모델에 저장하는 방식으로 확장. Playwright는 이 서비스 계층 내부에서만 사용하고 라우터/모델 계층에는 노출하지 않는 것을 권장.
-- **알림**: `services/notification_service.py`를 신설해 초대 생성/수락, 일정 변경 시점에 호출하도록 하고, 실제 발송은 이메일/푸시 프로바이더 어댑터로 분리.
-- **실시간 동기화 확장**: 현재는 `routers/presence.py`와 `core/presence.py`로 여행 상세 페이지의 접속자 상태만 WebSocket으로 실시간 표시합니다. 다음 단계에서는 `itinerary_service`의 생성·수정·삭제 시점에 `itinerary_changed` 이벤트를 같은 여행의 접속자에게 브로드캐스트하고, 다른 브라우저가 일정 목록을 다시 불러오도록 확장할 수 있습니다. 기존 낙관적 잠금(`version` 필드)은 이 구조와 호환됩니다.
-
-## 구현하고자 하는 목표
-
-이 프로젝트는 여러 사용자가 하나의 여행을 함께 계획하고 관리할 수 있는 협업형 여행 일정 웹앱을 목표로 합니다.
-
-### 협업 기능
-
-- 여행 생성자(Owner), 편집자(Editor), 조회자(Viewer) 역할 기반 권한 관리
-- 이메일 기반 여행 초대와 초대 수락
-- 같은 여행 상세 페이지를 보고 있는 공동 작업자 표시
-- 다른 사용자의 일정 생성·수정·삭제 결과를 자동 반영하는 실시간 동기화
-- 특정 일정 항목을 누가 수정 중인지 알려 주는 편집 상태 표시
-- 일정 수정 충돌을 사용자 친화적으로 해결하는 흐름 개선
-
-### 여행 계획 기능
-
-- 날짜·시간·장소·카테고리·메모 기반 여행 일정 관리
-- 여행지 정보 검색, 추천, 가격 비교
-- 지도와 장소 정보 연동
-- 교통·숙소·관광·식사 등 여행 카테고리별 일정 구성
-- 예약 정보와 여행 일정 연결
-
-### 알림과 운영 기능
-
-- 비밀번호 재설정 이메일 발송
-- 초대 이메일 발송
-- 일정 변경 시 참여자 이메일 또는 푸시 알림
-- 운영 환경 HTTPS 설정과 보안 쿠키 적용
-- 다중 서버 환경에서 Redis를 통한 WebSocket 접속 상태 공유
-
-## 현재 구현한 목표
-
-### 계정과 보안
-
-- 이메일·비밀번호 기반 회원가입, 로그인, 로그아웃
-- `bcrypt` 기반 비밀번호 해시 저장
-- `itsdangerous` 서명 기반 HttpOnly 세션 쿠키
-- 이메일 존재 여부를 노출하지 않는 비밀번호 재설정 요청
-- SHA-256 해시 기반의 재설정 토큰 저장
-- 만료 시간 적용 및 재설정 토큰 1회 사용 처리
-- SMTP를 통한 실제 비밀번호 재설정 이메일 발송
-- `.env`와 `.gitignore`를 이용한 SMTP 비밀번호와 비밀 설정 분리
-
-### 여행과 일정
-
-- 여행 생성, 목록 조회, 상세 조회, 수정, 삭제
-- 여행 기간과 일정 시간 범위 검증
-- 일정 생성, 조회, 수정, 삭제
-- 교통·숙소·관광·식사·쇼핑·기타 카테고리 관리
-- 여행 시간대를 고려한 일정 날짜 범위 검증
-- 일정 버전 번호를 이용한 낙관적 잠금 기반 수정 충돌 감지
-
-### 공동 작업과 권한
-
-- Owner, Editor, Viewer 역할 기반 권한 관리
-- Owner 전용 여행 수정·삭제·구성원 관리
-- Owner와 Editor의 일정 생성·수정·삭제 권한
-- Viewer의 읽기 전용 접근
-- 이메일 주소와 로그인 계정의 일치를 확인하는 초대 수락
-- 초대 링크 만료 및 1회 사용 처리
-- 같은 여행 상세 페이지에 접속한 공동 작업자 이니셜 아이콘 실시간 표시
-- 동일 사용자가 탭을 여러 개 열어도 아이콘이 중복되지 않도록 처리
-- 접속자가 탭을 닫거나 페이지를 떠날 때 접속 아이콘 제거
-
-### 개발과 검증
-
-- SQLite WAL 모드, busy timeout, foreign key 활성화
-- Alembic 기반 DB 마이그레이션
-- FastAPI, SQLAlchemy, Pydantic 기반 계층 분리
-- pytest와 in-memory SQLite를 이용한 자동 테스트
-- 회원가입, 로그인, 여행, 일정, 초대, 권한, 비밀번호 재설정 흐름 테스트
