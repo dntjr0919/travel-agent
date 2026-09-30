@@ -11,11 +11,11 @@
       <input type="text" name="destination" maxlength="200" />
     </label>
     <label>시작일
-      <input type="date" name="start_date" required />
-    </label>
-    <label>종료일
-      <input type="date" name="end_date" required />
-    </label>
+  <input type="date" id="trip-start-date" name="start_date" required />
+</label>
+<label>종료일
+  <input type="date" id="trip-end-date" name="end_date" required />
+</label>
     <label>시간대
       <input type="text" name="timezone" value="Asia/Seoul" required />
     </label>
@@ -27,6 +27,14 @@
 {% block scripts %}
 <script>
 requireLogin();
+const tripStartDateInput = document.getElementById("trip-start-date");
+const tripEndDateInput = document.getElementById("trip-end-date");
+
+tripStartDateInput.addEventListener("change", () => {
+  if (tripStartDateInput.value) {
+    tripEndDateInput.value = tripStartDateInput.value;
+  }
+});
 document.getElementById("trip-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const form = e.target;
