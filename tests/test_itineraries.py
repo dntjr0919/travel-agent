@@ -22,6 +22,55 @@ def create_itinerary(client: TestClient, trip_id: int, **overrides) -> dict:
     return res.json()
 
 
+def test_transport_draft_payload_can_create_itinerary(client):
+    register_and_login(client, "owner-transport@example.com")
+    trip = create_trip(client)
+
+    payload = {
+        "title": "[교통] 서울역 -> 부산역",
+        "category": "transportation",
+        "status": "planned",
+        "start_at": "2026-11-02T08:00:00+09:00",
+        "end_at": "2026-11-02T10:30:00+09:00",
+        "location_name": "서울역 -> 부산역",
+        "memo": "예약 링크: https://www.letskorail.com/example\n예약처: 코레일\n가격: 59800 KRW\n교통수단: 기차",
+    }
+
+    res = client.post(f"/api/trips/{trip['id']}/itineraries", json=payload)
+    assert res.status_code == 201
+
+    created = res.json()
+    assert created["category"] == "transportation"
+    assert created["status"] == "planned"
+    assert created["location_name"] == "서울역 -> 부산역"
+    assert "예약 링크:" in created["memo"]
+    assert "교통수단:" in created["memo"]
+
+
+def test_accommodation_draft_payload_can_create_itinerary(client):
+    register_and_login(client, "owner-accommodation@example.com")
+    trip = create_trip(client)
+
+    payload = {
+        "title": "[숙소] 해운대 호텔 체크인",
+        "category": "accommodation",
+        "status": "planned",
+        "start_at": "2026-11-03T15:00:00+09:00",
+        "end_at": "2026-11-03T16:00:00+09:00",
+        "location_name": "해운대 호텔",
+        "memo": "예약 링크: https://www.agoda.com/example\n예약처: Agoda\n체크아웃 시각: 2026-11-04 11:00",
+    }
+
+    res = client.post(f"/api/trips/{trip['id']}/itineraries", json=payload)
+    assert res.status_code == 201
+
+    created = res.json()
+    assert created["category"] == "accommodation"
+    assert created["status"] == "planned"
+    assert created["location_name"] == "해운대 호텔"
+    assert "체크아웃 시각:" in created["memo"]
+
+
 def test_end_before_start_is_rejected(client):
     register_and_login(client, "owner@example.com")
     trip = create_trip(client)

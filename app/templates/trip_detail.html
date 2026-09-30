@@ -93,6 +93,120 @@
   </form>
   <p id="item-form-error" class="error-text"></p>
 </div>
+<section id="external-booking-panel" class="card" style="display:none">
+  <div class="section-header">
+    <div>
+      <h2>외부 예약 링크로 일정 추가</h2>
+      <p class="muted small">
+        예약 URL의 도메인으로 예약처/유형을 제안하고, 입력 정보를 기존 일정 폼으로 가져옵니다.
+      </p>
+    </div>
+  </div>
+
+  <form id="external-booking-form" class="form">
+    <label>
+      예약 링크
+      <input
+        type="url"
+        name="booking_url"
+        placeholder="https://example.com/..."
+        required
+      />
+    </label>
+
+    <label>
+      예약처(자동 제안, 수정 가능)
+      <input type="text" name="provider" maxlength="120" />
+    </label>
+
+    <label>
+      유형
+      <select name="kind" id="external-booking-kind">
+        <option value="unknown" selected>직접 선택</option>
+        <option value="transport">교통</option>
+        <option value="accommodation">숙소</option>
+      </select>
+    </label>
+
+    <label>
+      제목(선택)
+      <input type="text" name="title" maxlength="200" />
+    </label>
+
+    <div class="form-grid-2">
+      <label>
+        가격(선택)
+        <input type="text" name="price" maxlength="40" placeholder="예: 120000" />
+      </label>
+      <label>
+        통화(선택)
+        <input type="text" name="currency" maxlength="10" placeholder="예: KRW" />
+      </label>
+    </div>
+
+    <div id="external-transport-fields" style="display:none">
+      <label>
+        교통수단
+        <select name="transport_type">
+          <option value="flight">항공</option>
+          <option value="train">기차</option>
+          <option value="intercity_bus">시외/고속버스</option>
+        </select>
+      </label>
+
+      <div class="form-grid-2">
+        <label>
+          출발지
+          <input type="text" name="departure_name" maxlength="200" />
+        </label>
+        <label>
+          도착지
+          <input type="text" name="arrival_name" maxlength="200" />
+        </label>
+      </div>
+
+      <div class="form-grid-2">
+        <label>
+          출발 시각
+          <input type="datetime-local" name="departure_at" />
+        </label>
+        <label>
+          도착 시각
+          <input type="datetime-local" name="arrival_at" />
+        </label>
+      </div>
+    </div>
+
+    <div id="external-accommodation-fields" style="display:none">
+      <label>
+        숙소명
+        <input type="text" name="accommodation_name" maxlength="200" />
+      </label>
+
+      <div class="form-grid-2">
+        <label>
+          체크인 시각
+          <input type="datetime-local" name="checkin_at" />
+        </label>
+        <label>
+          체크아웃 시각
+          <input type="datetime-local" name="checkout_at" />
+        </label>
+      </div>
+    </div>
+
+    <label>
+      메모(선택)
+      <textarea name="memo" rows="3"></textarea>
+    </label>
+
+    <div class="form-actions">
+      <button type="submit">일정으로 가져오기</button>
+    </div>
+  </form>
+
+  <p id="external-booking-error" class="error-text"></p>
+</section>
 <section id="place-candidate-panel" class="card">
   <div class="section-header">
     <div>
@@ -184,6 +298,21 @@ const PLACE_CATEGORY_TO_ITINERARY = {
   park: "sightseeing",
   shopping_mall: "shopping",
   department_store: "shopping",
+};
+const BOOKING_PROVIDER_HINTS = [
+  { match: "agoda.com", provider: "Agoda", kind: "accommodation" },
+  { match: "booking.com", provider: "Booking.com", kind: "accommodation" },
+  { match: "trip.com", provider: "Trip.com", kind: "unknown" },
+  { match: "airbnb.", provider: "Airbnb", kind: "accommodation" },
+  { match: "koreanair.com", provider: "대한항공", kind: "transport" },
+  { match: "flyasiana.com", provider: "아시아나항공", kind: "transport" },
+  { match: "letskorail.com", provider: "코레일", kind: "transport" },
+  { match: "srail.or.kr", provider: "SRT", kind: "transport" },
+];
+const TRANSPORT_TYPE_LABELS = {
+  flight: "항공",
+  train: "기차",
+  intercity_bus: "시외/고속버스",
 };
 let currentUser = null;
 let currentRole = null;
@@ -472,7 +601,10 @@ if (isOwner) {
 
 if (canEdit) {
   document.getElementById("add-item-btn").addEventListener("click", () => openItemForm(null));
-}}
+}
+
+  setExternalBookingPanelVisibility(canEdit);
+}
 
 function openTripEditForm() {
   if (!currentTrip) {
@@ -548,6 +680,182 @@ async function loadItineraries() {
 
 function canEditPlaces() {
   return currentRole === "owner" || currentRole === "editor";
+}
+
+function setExternalBookingPanelVisibility(canEdit) {
+  const panel = document.getElementById("external-booking-panel");
+  panel.style.display = canEdit ? "block" : "none";
+}
+
+function toggleExternalBookingFields() {
+  const form = document.getElementById("external-booking-form");
+  const kind = form.kind.value;
+
+  document.getElementById("external-transport-fields").style.display =
+    kind === "transport" ? "block" : "none";
+  document.getElementById("external-accommodation-fields").style.display =
+    kind === "accommodation" ? "block" : "none";
+}
+
+function parseExternalBookingUrl(rawUrl) {
+  let parsed;
+
+  try {
+    parsed = new URL(rawUrl);
+  } catch (error) {
+    return { error: "예약 링크는 http:// 또는 https:// 형식이어야 합니다." };
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { error: "예약 링크는 http:// 또는 https:// 형식이어야 합니다." };
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  const hint = BOOKING_PROVIDER_HINTS.find((currentHint) =>
+    hostname.includes(currentHint.match),
+  );
+
+  return {
+    hostname,
+    provider: hint ? hint.provider : "",
+    kind: hint ? hint.kind : "unknown",
+  };
+}
+
+function applyExternalBookingHints() {
+  const form = document.getElementById("external-booking-form");
+  const errorEl = document.getElementById("external-booking-error");
+  const bookingUrl = form.booking_url.value.trim();
+
+  errorEl.textContent = "";
+
+  if (!bookingUrl) {
+    return false;
+  }
+
+  const parsed = parseExternalBookingUrl(bookingUrl);
+
+  if (parsed.error) {
+    errorEl.textContent = parsed.error;
+    return false;
+  }
+
+  form.provider.value = parsed.provider;
+  form.kind.value = parsed.kind;
+  toggleExternalBookingFields();
+  return true;
+}
+
+function buildExternalBookingMemo(form, kind, bookingUrl, provider, priceText) {
+  const lines = [];
+
+  lines.push(`예약 링크: ${bookingUrl}`);
+
+  if (provider) {
+    lines.push(`예약처: ${provider}`);
+  }
+
+  if (priceText) {
+    lines.push(`가격: ${priceText}`);
+  }
+
+  if (kind === "transport" && form.transport_type.value) {
+    lines.push(`교통수단: ${TRANSPORT_TYPE_LABELS[form.transport_type.value] || form.transport_type.value}`);
+  }
+
+  if (kind === "accommodation" && form.checkout_at.value) {
+    lines.push(`체크아웃 시각: ${form.checkout_at.value.replace("T", " ")}`);
+  }
+
+  const userMemo = form.memo.value.trim();
+  if (userMemo) {
+    lines.push("");
+    lines.push(userMemo);
+  }
+
+  return lines.join("\n");
+}
+
+function importExternalBookingToItemForm() {
+  const form = document.getElementById("external-booking-form");
+  const errorEl = document.getElementById("external-booking-error");
+
+  errorEl.textContent = "";
+
+  const bookingUrl = form.booking_url.value.trim();
+  const parsed = parseExternalBookingUrl(bookingUrl);
+
+  if (parsed.error) {
+    errorEl.textContent = parsed.error;
+    return;
+  }
+
+  const kind = form.kind.value;
+  const provider = form.provider.value.trim();
+  const price = form.price.value.trim();
+  const currency = form.currency.value.trim();
+  const priceText = [price, currency].filter(Boolean).join(" ");
+
+  if (kind === "unknown") {
+    errorEl.textContent = "유형(교통/숙소)을 선택하세요.";
+    return;
+  }
+
+  if (
+    kind === "transport" &&
+    form.departure_at.value &&
+    form.arrival_at.value &&
+    form.arrival_at.value <= form.departure_at.value
+  ) {
+    errorEl.textContent = "도착 시각은 출발 시각보다 늦어야 합니다.";
+    return;
+  }
+
+  if (
+    kind === "accommodation" &&
+    form.checkin_at.value &&
+    form.checkout_at.value &&
+    form.checkout_at.value <= form.checkin_at.value
+  ) {
+    errorEl.textContent = "체크아웃 시각은 체크인 시각보다 늦어야 합니다.";
+    return;
+  }
+
+  openItemForm(null);
+
+  const itemForm = document.getElementById("item-form");
+  const memo = buildExternalBookingMemo(form, kind, bookingUrl, provider, priceText);
+
+  itemForm.status.value = "planned";
+
+  if (kind === "transport") {
+    const departureName = form.departure_name.value.trim();
+    const arrivalName = form.arrival_name.value.trim();
+    const route = [departureName, arrivalName].filter(Boolean).join(" -> ");
+    const defaultTitle = route ? `[교통] ${route}` : "[교통] 이동";
+
+    itemForm.title.value = form.title.value.trim() || defaultTitle;
+    itemForm.category.value = "transportation";
+    itemForm.start_at.value = form.departure_at.value || "";
+    itemForm.end_at.value = form.arrival_at.value || "";
+    itemForm.location_name.value = route;
+    itemForm.memo.value = memo;
+    return;
+  }
+
+  const accommodationName = form.accommodation_name.value.trim();
+  const defaultTitle = accommodationName
+    ? `[숙소] ${accommodationName} 체크인`
+    : "[숙소] 체크인";
+
+  itemForm.title.value = form.title.value.trim() || defaultTitle;
+  itemForm.category.value = "accommodation";
+  itemForm.start_at.value = form.checkin_at.value || "";
+  itemForm.end_at.value = form.checkin_at.value
+    ? addOneHourToDatetimeLocal(form.checkin_at.value)
+    : "";
+  itemForm.location_name.value = accommodationName;
+  itemForm.memo.value = memo;
 }
 
 function renderPlaceSearchResults(results) {
@@ -1184,6 +1492,23 @@ document.getElementById("place-search-form").addEventListener("submit", async (e
 
   await searchPlaces(scope, query);
 });
+
+document.getElementById("external-booking-kind").addEventListener("change", () => {
+  toggleExternalBookingFields();
+});
+
+document
+  .querySelector('#external-booking-form input[name="booking_url"]')
+  .addEventListener("change", () => {
+    applyExternalBookingHints();
+  });
+
+document.getElementById("external-booking-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  importExternalBookingToItemForm();
+});
+
+toggleExternalBookingFields();
 
 requireLogin().then(async (user) => {
   if (!user) {
