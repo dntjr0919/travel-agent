@@ -201,7 +201,9 @@
     </label>
 
     <div class="form-actions">
-      <button type="submit">일정으로 가져오기</button>
+      <button type="submit" id="external-import-default-btn">일정으로 가져오기</button>
+      <button type="button" id="external-import-checkin-btn" style="display:none">체크인 일정으로 가져오기</button>
+      <button type="button" id="external-import-checkout-btn" style="display:none">체크아웃 일정으로 가져오기</button>
     </div>
   </form>
 
@@ -763,11 +765,18 @@ function syncAccommodationCheckoutFromCheckin() {
 function toggleExternalBookingFields() {
   const form = document.getElementById("external-booking-form");
   const kind = form.kind.value;
+  const defaultImportButton = document.getElementById("external-import-default-btn");
+  const checkinImportButton = document.getElementById("external-import-checkin-btn");
+  const checkoutImportButton = document.getElementById("external-import-checkout-btn");
 
   document.getElementById("external-transport-fields").style.display =
     kind === "transport" ? "block" : "none";
   document.getElementById("external-accommodation-fields").style.display =
     kind === "accommodation" ? "block" : "none";
+
+  defaultImportButton.style.display = kind === "accommodation" ? "none" : "inline-flex";
+  checkinImportButton.style.display = kind === "accommodation" ? "inline-flex" : "none";
+  checkoutImportButton.style.display = kind === "accommodation" ? "inline-flex" : "none";
 
   if (kind === "accommodation") {
     syncAccommodationCheckoutFromCheckin();
@@ -855,6 +864,100 @@ function buildExternalBookingMemo(form, kind, bookingUrl, provider, priceText) {
   return lines.join("\n");
 }
 
+function buildAccommodationDraftMemo(form, mode, bookingUrl, provider, priceText) {
+  const lines = [];
+
+  lines.push(`예약 링크: ${bookingUrl}`);
+
+  if (provider) {
+    lines.push(`예약처: ${provider}`);
+  }
+
+  if (priceText) {
+    lines.push(`가격: ${priceText}`);
+  }
+
+  if (mode === "checkin" && form.checkout_at.value) {
+    lines.push(`체크아웃 시각: ${form.checkout_at.value.replace("T", " ")}`);
+  }
+
+  if (mode === "checkout" && form.checkin_at.value) {
+    lines.push(`체크인 시각: ${form.checkin_at.value.replace("T", " ")}`);
+  }
+
+  const userMemo = form.memo.value.trim();
+  if (userMemo) {
+    lines.push("");
+    lines.push(userMemo);
+  }
+
+  return lines.join("\n");
+}
+
+function buildAccommodationDraftTitle(form, mode) {
+  const userTitle = form.title.value.trim();
+  const accommodationName = form.accommodation_name.value.trim();
+  const subject = userTitle || accommodationName;
+
+  if (!subject) {
+    return mode === "checkin" ? "[숙소] 체크인" : "[숙소] 체크아웃";
+  }
+
+  return mode === "checkin"
+    ? `[숙소] ${subject} 체크인`
+    : `[숙소] ${subject} 체크아웃`;
+}
+
+function importAccommodationDraftToItemForm(mode) {
+  const form = document.getElementById("external-booking-form");
+  const errorEl = document.getElementById("external-booking-error");
+
+  errorEl.textContent = "";
+
+  const bookingUrl = form.booking_url.value.trim();
+  const parsed = parseExternalBookingUrl(bookingUrl);
+
+  if (parsed.error) {
+    errorEl.textContent = parsed.error;
+    return;
+  }
+
+  const provider = form.provider.value.trim();
+  const price = form.price.value.trim();
+  const currency = form.currency.value.trim();
+  const priceText = [price, currency].filter(Boolean).join(" ");
+  const accommodationName = form.accommodation_name.value.trim();
+
+  if (
+    form.checkin_at.value &&
+    form.checkout_at.value &&
+    form.checkout_at.value <= form.checkin_at.value
+  ) {
+    errorEl.textContent = "체크아웃 시각은 체크인 시각보다 늦어야 합니다.";
+    return;
+  }
+
+  const startAt = mode === "checkin" ? form.checkin_at.value : form.checkout_at.value;
+
+  if (!startAt) {
+    errorEl.textContent = mode === "checkin"
+      ? "체크인 시각을 입력하세요."
+      : "체크아웃 시각을 입력하세요.";
+    return;
+  }
+
+  openItemForm(null);
+
+  const itemForm = document.getElementById("item-form");
+  itemForm.title.value = buildAccommodationDraftTitle(form, mode);
+  itemForm.category.value = "accommodation";
+  itemForm.status.value = "planned";
+  itemForm.start_at.value = startAt;
+  itemForm.end_at.value = addOneHourToDatetimeLocal(startAt);
+  itemForm.location_name.value = accommodationName;
+  itemForm.memo.value = buildAccommodationDraftMemo(form, mode, bookingUrl, provider, priceText);
+}
+
 function importExternalBookingToItemForm() {
   const form = document.getElementById("external-booking-form");
   const errorEl = document.getElementById("external-booking-error");
@@ -900,6 +1003,11 @@ function importExternalBookingToItemForm() {
     return;
   }
 
+  if (kind === "accommodation") {
+    importAccommodationDraftToItemForm("checkin");
+    return;
+  }
+
   openItemForm(null);
 
   const itemForm = document.getElementById("item-form");
@@ -922,19 +1030,7 @@ function importExternalBookingToItemForm() {
     return;
   }
 
-  const accommodationName = form.accommodation_name.value.trim();
-  const defaultTitle = accommodationName
-    ? `[숙소] ${accommodationName} 체크인`
-    : "[숙소] 체크인";
-
-  itemForm.title.value = form.title.value.trim() || defaultTitle;
-  itemForm.category.value = "accommodation";
-  itemForm.start_at.value = form.checkin_at.value || "";
-  itemForm.end_at.value = form.checkin_at.value
-    ? addOneHourToDatetimeLocal(form.checkin_at.value)
-    : "";
-  itemForm.location_name.value = accommodationName;
-  itemForm.memo.value = memo;
+  errorEl.textContent = "유형(교통/숙소)을 선택하세요.";
 }
 
 function renderPlaceSearchResults(results) {
@@ -1611,6 +1707,14 @@ document
 document.getElementById("external-booking-form").addEventListener("submit", (event) => {
   event.preventDefault();
   importExternalBookingToItemForm();
+});
+
+document.getElementById("external-import-checkin-btn").addEventListener("click", () => {
+  importAccommodationDraftToItemForm("checkin");
+});
+
+document.getElementById("external-import-checkout-btn").addEventListener("click", () => {
+  importAccommodationDraftToItemForm("checkout");
 });
 
 toggleExternalBookingFields();
