@@ -2,7 +2,7 @@
 {% block title %}여행 상세 - Travel Planner{% endblock %}
 {% block content %}
 <div class="trip-detail-container">
-<div id="trip-header" class="page-header"></div>
+<div id="trip-header" class="page-header trip-header"></div>
 <div id="trip-edit-panel" class="card" style="display:none">
   <h2>여행 정보 수정</h2>
 
@@ -1085,9 +1085,27 @@ function renderHeader() {
     <div class="trip-header-main">
       <div class="trip-header-info">
         <h1>${escapeHtml(currentTrip.title)}</h1>
-        <p class="muted">${escapeHtml(currentTrip.destination || "목적지 미정")}</p>
-        <p>${currentTrip.start_date} ~ ${currentTrip.end_date} (${escapeHtml(currentTrip.timezone)})</p>
+        <div class="trip-header-meta" aria-label="여행 정보">
+          <span class="trip-header-destination">${escapeHtml(currentTrip.destination || "목적지 미정")}</span>
+          <span class="trip-header-dates">${currentTrip.start_date} ~ ${currentTrip.end_date}</span>
+          <span class="trip-header-timezone">${escapeHtml(currentTrip.timezone)}</span>
+        </div>
       </div>
+
+      <div class="trip-header-controls">
+        <div class="header-actions trip-header-actions" aria-label="여행 관련 작업">
+          ${isOwner
+            ? `<a class="button secondary trip-header-action-member" href="/trips/${TRIP_ID}/members">구성원 관리</a>`
+            : ""}
+
+          ${isOwner
+            ? `<button id="edit-trip-btn" class="button secondary trip-header-action-edit">여행 정보 수정</button>`
+            : ""}
+
+          ${canEdit
+            ? `<button id="add-item-btn" class="button trip-header-action-add">+ 일정 추가</button>`
+            : ""}
+        </div>
 
       <button
         id="open-tools-btn"
@@ -1107,20 +1125,7 @@ function renderHeader() {
           <span class="sidebar-toggle-rail"></span>
         </span>
       </button>
-    </div>
-
-    <div class="header-actions">
-      ${isOwner
-        ? `<a class="button secondary" href="/trips/${TRIP_ID}/members">구성원 관리</a>`
-        : ""}
-
-      ${isOwner
-        ? `<button id="edit-trip-btn" class="button secondary">여행 정보 수정</button>`
-        : ""}
-
-      ${canEdit
-        ? `<button id="add-item-btn" class="button">+ 일정 추가</button>`
-        : ""}
+      </div>
     </div>
   `;
 if (isOwner) {
