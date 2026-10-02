@@ -150,6 +150,25 @@
   <p id="item-form-error" class="error-text"></p>
 </div>
 
+<div id="quick-time-edit-panel" class="card" style="display:none">
+  <h2>일정 시간 변경</h2>
+  <form id="quick-time-edit-form" class="form">
+    <input type="hidden" id="quick-time-edit-item-id" />
+    <input type="hidden" id="quick-time-edit-version" />
+    <label>시작 시간
+      <input type="datetime-local" id="quick-time-edit-start-at" />
+    </label>
+    <label>종료 시간
+      <input type="datetime-local" id="quick-time-edit-end-at" />
+    </label>
+    <div class="form-actions">
+      <button type="submit">저장</button>
+      <button type="button" id="quick-time-edit-cancel" class="secondary">취소</button>
+    </div>
+  </form>
+  <p id="quick-time-edit-error" class="error-text"></p>
+</div>
+
 <div id="trip-tools-backdrop" class="trip-tools-backdrop" hidden></div>
 
 <aside
@@ -539,6 +558,9 @@
           일정 날짜
           <select id="travel-map-itinerary-date"></select>
         </label>
+        <button id="itinerary-route-btn" type="button" class="secondary" style="display:none">도보 동선 계산</button>
+        <p id="itinerary-route-loading" class="muted small" style="display:none">도보 동선을 계산하고 있습니다.</p>
+        <p id="itinerary-route-error" class="error-text" style="display:none"></p>
       </div>
 
       <div id="travel-map-candidate-controls" class="travel-map-control-group" style="display:none;">
@@ -634,6 +656,8 @@ let externalAccommodationCheckoutManuallyEdited = false;
 let currentItineraries = [];
 let currentAiItineraryDraft = null;
 let aiItineraryRouteLegMap = {};
+let itineraryRouteLegMap = new Map();
+let itineraryRouteRequestInProgress = false;
 let currentPlaceCandidates = [];
 updateTravelMapTabCounts();
 let travelMap = null;
@@ -1075,6 +1099,7 @@ async function loadItineraries() {
   const res = await apiFetch(`/api/trips/${TRIP_ID}/itineraries`);
   if (!res.ok) return;
   const items = await res.json();
+  clearItineraryRouteState();
   renderItineraries(items);
 }
 
@@ -1290,7 +1315,13 @@ function resetItemPlaceSearchState() {
   form.longitude.value = "";
 }
 
+function hideQuickTimeEditPanel() {
+  document.getElementById("quick-time-edit-panel").style.display = "none";
+  document.getElementById("quick-time-edit-error").textContent = "";
+}
+
 function hideItemForm() {
+  hideQuickTimeEditPanel();
   document.getElementById("item-form-panel").style.display = "none";
   document.getElementById("item-form-error").textContent = "";
   document.getElementById("conflict-banner").style.display = "none";
@@ -1299,6 +1330,7 @@ function hideItemForm() {
 }
 
 function hideTripEditForm() {
+  hideQuickTimeEditPanel();
   document.getElementById("trip-edit-panel").style.display = "none";
   document.getElementById("trip-edit-error").textContent = "";
 }
@@ -1829,10 +1861,14 @@ function updateTravelMapAiDateOptions() {
 }
 
 function setTravelMapTab(tabName) {
+  if (tabName !== "itineraries") {
+    clearItineraryRouteState();
+  }
   activeTravelMapTab = tabName;
   hideMobileItineraryDetail();
   updateTravelMapTabButtons();
   updateTravelMapControlsVisibility();
+  updateItineraryRouteButtonVisibility();
   refreshTravelMap();
 }
 
@@ -1980,7 +2016,23 @@ function refreshTravelMap() {
 
   if (activeTravelMapTab === "itineraries") {
     const selectedDate = document.getElementById("travel-map-itinerary-date")?.value || "all";
-    points = currentItineraries
+    points = [...currentItineraries]
+      .sort((a, b) => {
+        if (selectedDate === "all") {
+          return 0;
+        }
+        const aTime = a?.start_at ? new Date(a.start_at).getTime() : NaN;
+        const bTime = b?.start_at ? new Date(b.start_at).getTime() : NaN;
+        const aValid = Number.isFinite(aTime);
+        const bValid = Number.isFinite(bTime);
+        if (aValid && bValid && aTime !== bTime) {
+          return aTime - bTime;
+        }
+        if (aValid !== bValid) {
+          return aValid ? -1 : 1;
+        }
+        return Number(a?.id || 0) - Number(b?.id || 0);
+      })
       .filter((item) => Number.isFinite(item?.latitude) && Number.isFinite(item?.longitude))
       .filter((item) => {
         if (selectedDate === "all") {
@@ -1991,12 +2043,13 @@ function refreshTravelMap() {
         }
         return String(item.start_at).slice(0, 10) === selectedDate;
       })
-      .map((item) => ({
+      .map((item, index) => ({
         itemId: item.id,
         latitude: Number(item.latitude),
         longitude: Number(item.longitude),
         title: item.title || "일정",
         content: buildItineraryInfoWindowContent(item),
+        sequenceNumber: selectedDate === "all" ? undefined : index + 1,
       }));
 
     if (points.length === 0) {
@@ -2053,14 +2106,18 @@ function refreshTravelMap() {
   setTravelMapStatus("");
 
   for (const point of points) {
-    const marker = new google.maps.Marker({
+    const markerOptions = {
       position: {
         lat: Number(point.latitude),
         lng: Number(point.longitude),
       },
       map: travelMap,
       title: point.title,
-    });
+    };
+    if (Number.isInteger(point.sequenceNumber)) {
+      markerOptions.label = { text: String(point.sequenceNumber) };
+    }
+    const marker = new google.maps.Marker(markerOptions);
 
     marker.addListener("click", () => {
       if (!travelMapInfoWindow) {
@@ -2166,6 +2223,65 @@ function formatWalkingDistance(distanceMeters) {
     return `${(distance / 1000).toFixed(1)}km`;
   }
   return `${Math.round(distance)}m`;
+}
+
+function buildItineraryLegKey(date, fromItineraryId, toItineraryId) {
+  return `${date}::${fromItineraryId}::${toItineraryId}`;
+}
+
+function getCalculableItinerariesForDate(selectedDate) {
+  if (!selectedDate || selectedDate === "all") {
+    return [];
+  }
+
+  return [...currentItineraries]
+    .sort((a, b) => {
+      const aTime = a?.start_at ? new Date(a.start_at).getTime() : NaN;
+      const bTime = b?.start_at ? new Date(b.start_at).getTime() : NaN;
+      const aValid = Number.isFinite(aTime);
+      const bValid = Number.isFinite(bTime);
+      if (aValid && bValid && aTime !== bTime) {
+        return aTime - bTime;
+      }
+      if (aValid !== bValid) {
+        return aValid ? -1 : 1;
+      }
+      return Number(a?.id || 0) - Number(b?.id || 0);
+    })
+    .filter((item) => item?.start_at && String(item.start_at).slice(0, 10) === selectedDate)
+    .filter((item) => {
+      const latitude = item?.latitude;
+      const longitude = item?.longitude;
+      return Number.isFinite(latitude) && latitude >= -90 && latitude <= 90
+        && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180;
+    });
+}
+
+function clearItineraryRouteState() {
+  itineraryRouteLegMap = new Map();
+  const routeErrorEl = document.getElementById("itinerary-route-error");
+  const routeLoadingEl = document.getElementById("itinerary-route-loading");
+  if (routeErrorEl) {
+    routeErrorEl.textContent = "";
+    routeErrorEl.style.display = "none";
+  }
+  if (routeLoadingEl) {
+    routeLoadingEl.style.display = "none";
+  }
+}
+
+function updateItineraryRouteButtonVisibility() {
+  const routeBtn = document.getElementById("itinerary-route-btn");
+  if (!routeBtn) {
+    return;
+  }
+
+  const selectedDate = document.getElementById("travel-map-itinerary-date")?.value || "all";
+  const canCalculate = activeTravelMapTab === "itineraries"
+    && selectedDate !== "all"
+    && getCalculableItinerariesForDate(selectedDate).length >= 2;
+  routeBtn.style.display = canCalculate ? "inline-flex" : "none";
+  routeBtn.disabled = !canCalculate || itineraryRouteRequestInProgress;
 }
 
 function clearAiItineraryRouteState() {
@@ -3225,6 +3341,22 @@ function initializeItineraryInteractions() {
       return;
     }
 
+    const quickTimeButton = target.closest(".quick-time-edit-btn");
+    if (quickTimeButton) {
+      event.stopPropagation();
+      const itemId = Number(quickTimeButton.dataset.id);
+      closeAllItemActionMenus();
+
+      if (Number.isFinite(itemId)) {
+        const item = currentItineraries.find((currentItem) => currentItem.id === itemId);
+        if (item) {
+          openQuickTimeEditForm(item);
+        }
+      }
+
+      return;
+    }
+
     const deleteButton = target.closest(".delete-btn");
     if (deleteButton) {
       event.stopPropagation();
@@ -3285,6 +3417,7 @@ function renderItineraries(items) {
   currentItineraries = Array.isArray(items) ? items : [];
   updateTravelMapTabCounts();
   updateTravelMapItineraryDateOptions();
+  updateItineraryRouteButtonVisibility();
 
   if (items.length === 0) {
     listEl.innerHTML = "";
@@ -3297,13 +3430,26 @@ function renderItineraries(items) {
 
   const groups = groupByDate(items);
   const dateKeys = Object.keys(groups).sort();
+  const selectedRouteDate = document.getElementById("travel-map-itinerary-date")?.value || "all";
+  const routeItems = getCalculableItinerariesForDate(selectedRouteDate);
+  const routeNextIdByItemId = new Map(
+    routeItems.slice(0, -1).map((item, index) => [Number(item.id), Number(routeItems[index + 1].id)]),
+  );
 
   listEl.innerHTML = dateKeys.map((date) => `
     <section class="date-group">
       <h3>${date === "날짜 미정" ? date : date}</h3>
 
       <div class="item-list">
-        ${groups[date].map((item) => `
+        ${groups[date].map((item) => {
+          const nextRouteId = routeNextIdByItemId.get(Number(item.id));
+          const routeLeg = nextRouteId
+            ? itineraryRouteLegMap.get(buildItineraryLegKey(selectedRouteDate, item.id, nextRouteId))
+            : null;
+          const routeLegHtml = routeLeg
+            ? `<p class="muted small itinerary-route-leg">↓ 도보 약 ${escapeHtml(formatWalkingDuration(routeLeg.duration_seconds))} · 약 ${escapeHtml(formatWalkingDistance(routeLeg.distance_meters))}</p>`
+            : "";
+          return `
           <article class="item-card${item.category === "transportation" || item.category === "accommodation" ? ` item-card--${item.category}` : ""}" data-id="${item.id}">
             <div class="item-card-head">
               <button
@@ -3348,6 +3494,10 @@ function renderItineraries(items) {
                         수정
                       </button>
 
+                      <button type="button" class="quick-time-edit-btn" data-id="${item.id}" role="menuitem">
+                        시간 변경
+                      </button>
+
                       <button type="button" class="delete-btn" data-id="${item.id}" role="menuitem">
                         삭제
                       </button>
@@ -3372,7 +3522,9 @@ function renderItineraries(items) {
                 </p>
             </div>
           </article>
-        `).join("")}
+          ${routeLegHtml}
+        `;
+        }).join("")}
       </div>
     </section>
   `).join("");
@@ -3479,6 +3631,105 @@ function closeItemForm() {
   hideItemForm();
   closeToolsDrawer();
 }
+
+let quickTimeEndAtManuallyEdited = false;
+
+function openQuickTimeEditForm(item) {
+  closeAllItemActionMenus();
+  closeToolsDrawer();
+  hideItemForm();
+  hideTripEditForm();
+  document.getElementById("conflict-banner").style.display = "none";
+
+  const startInput = document.getElementById("quick-time-edit-start-at");
+  const endInput = document.getElementById("quick-time-edit-end-at");
+
+  document.getElementById("quick-time-edit-item-id").value = item.id;
+  document.getElementById("quick-time-edit-version").value = item.version;
+  startInput.value = toDatetimeLocalValue(item.start_at);
+  endInput.value = toDatetimeLocalValue(item.end_at);
+  quickTimeEndAtManuallyEdited = Boolean(item.end_at);
+
+  if (startInput.value && !endInput.value) {
+    endInput.value = addOneHourToDatetimeLocal(startInput.value);
+  }
+
+  const panel = document.getElementById("quick-time-edit-panel");
+  document.getElementById("quick-time-edit-error").textContent = "";
+  panel.style.display = "block";
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closeQuickTimeEditForm() {
+  hideQuickTimeEditPanel();
+}
+
+document.getElementById("quick-time-edit-cancel").addEventListener("click", closeQuickTimeEditForm);
+
+document.getElementById("quick-time-edit-start-at").addEventListener("change", () => {
+  const startValue = document.getElementById("quick-time-edit-start-at").value;
+  const endInput = document.getElementById("quick-time-edit-end-at");
+
+  if (!startValue) {
+    return;
+  }
+
+  if (!quickTimeEndAtManuallyEdited || !endInput.value || endInput.value <= startValue) {
+    endInput.value = addOneHourToDatetimeLocal(startValue);
+  }
+});
+
+document.getElementById("quick-time-edit-end-at").addEventListener("change", () => {
+  quickTimeEndAtManuallyEdited = true;
+});
+
+document.getElementById("quick-time-edit-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const errorEl = document.getElementById("quick-time-edit-error");
+  const submitBtn = event.currentTarget.querySelector('button[type="submit"]');
+  const itemId = document.getElementById("quick-time-edit-item-id").value;
+  const startAt = fromDatetimeLocalValue(document.getElementById("quick-time-edit-start-at").value);
+  const endAt = fromDatetimeLocalValue(document.getElementById("quick-time-edit-end-at").value);
+
+  errorEl.textContent = "";
+
+  if (startAt && endAt && endAt <= startAt) {
+    errorEl.textContent = "종료 시간은 시작 시간보다 늦어야 합니다.";
+    return;
+  }
+
+  const originalLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = "저장 중...";
+
+  try {
+    const res = await apiFetch(`/api/itineraries/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        start_at: startAt,
+        end_at: endAt,
+        version: Number(document.getElementById("quick-time-edit-version").value),
+      }),
+    });
+
+    if (res.ok) {
+      closeQuickTimeEditForm();
+      await loadItineraries();
+    } else if (res.status === 409) {
+      closeQuickTimeEditForm();
+      document.getElementById("conflict-banner").style.display = "block";
+    } else {
+      const data = await res.json().catch(() => ({}));
+      errorEl.textContent = typeof data.detail === "string" ? data.detail : "저장에 실패했습니다.";
+    }
+  } catch (error) {
+    errorEl.textContent = "저장에 실패했습니다.";
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalLabel;
+  }
+});
 
 function setMobileMainTab(tabName) {
   const schedulePanel = document.getElementById("trip-schedule-panel");
@@ -3744,6 +3995,7 @@ const aiItineraryRouteErrorEl = document.getElementById("ai-itinerary-route-erro
 const aiItineraryMapDateSelect = document.getElementById("ai-itinerary-map-date");
 const savedCandidatesMapFilter = document.getElementById("saved-candidates-map-filter");
 const travelMapItineraryDateSelect = document.getElementById("travel-map-itinerary-date");
+const itineraryRouteBtn = document.getElementById("itinerary-route-btn");
 
 document.getElementById("close-tools-btn")?.addEventListener("click", closeToolsDrawer);
 document.getElementById("trip-tools-backdrop")?.addEventListener("click", closeToolsDrawer);
@@ -3759,6 +4011,9 @@ document.addEventListener("keydown", (event) => {
     closeToolsDrawer();
     closeAllItemActionMenus();
     closeAllItemDetails();
+    if (document.getElementById("quick-time-edit-panel").style.display !== "none") {
+      closeQuickTimeEditForm();
+    }
   }
 });
 
@@ -3794,7 +4049,77 @@ document.getElementById("travel-map-tab-ai")?.addEventListener("click", () => {
 
 if (travelMapItineraryDateSelect) {
   travelMapItineraryDateSelect.addEventListener("change", () => {
+    clearItineraryRouteState();
     refreshTravelMap();
+    updateItineraryRouteButtonVisibility();
+  });
+}
+
+if (itineraryRouteBtn) {
+  itineraryRouteBtn.addEventListener("click", async () => {
+    const selectedDate = travelMapItineraryDateSelect?.value || "all";
+    const routeErrorEl = document.getElementById("itinerary-route-error");
+    const routeLoadingEl = document.getElementById("itinerary-route-loading");
+    routeErrorEl.textContent = "";
+    routeErrorEl.style.display = "none";
+
+    if (selectedDate === "all") {
+      routeErrorEl.textContent = "특정 날짜를 선택하세요.";
+      routeErrorEl.style.display = "block";
+      return;
+    }
+
+    if (getCalculableItinerariesForDate(selectedDate).length < 2) {
+      routeErrorEl.textContent = "지도 좌표가 있는 일정이 2개 이상 필요합니다.";
+      routeErrorEl.style.display = "block";
+      updateItineraryRouteButtonVisibility();
+      return;
+    }
+
+    const originalBtnText = itineraryRouteBtn.textContent;
+    itineraryRouteRequestInProgress = true;
+    itineraryRouteBtn.disabled = true;
+    itineraryRouteBtn.textContent = "계산 중...";
+    routeLoadingEl.style.display = "block";
+
+    try {
+      const res = await apiFetch(`/api/trips/${TRIP_ID}/itinerary-routes`, {
+        method: "POST",
+        body: JSON.stringify({ date: selectedDate }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (travelMapItineraryDateSelect?.value === selectedDate) {
+          routeErrorEl.textContent = data.detail || "도보 동선 계산에 실패했습니다.";
+          routeErrorEl.style.display = "block";
+        }
+        return;
+      }
+
+      if (travelMapItineraryDateSelect?.value !== selectedDate || activeTravelMapTab !== "itineraries") {
+        return;
+      }
+
+      itineraryRouteLegMap = new Map();
+      for (const leg of data.legs || []) {
+        const key = buildItineraryLegKey(selectedDate, leg.from_itinerary_id, leg.to_itinerary_id);
+        itineraryRouteLegMap.set(key, leg);
+      }
+      renderItineraries(currentItineraries);
+      refreshTravelMap();
+    } catch (error) {
+      if (travelMapItineraryDateSelect?.value === selectedDate) {
+        routeErrorEl.textContent = "도보 동선 계산 중 네트워크 오류가 발생했습니다.";
+        routeErrorEl.style.display = "block";
+      }
+    } finally {
+      itineraryRouteRequestInProgress = false;
+      routeLoadingEl.style.display = "none";
+      itineraryRouteBtn.disabled = false;
+      itineraryRouteBtn.textContent = originalBtnText;
+      updateItineraryRouteButtonVisibility();
+    }
   });
 }
 

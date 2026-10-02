@@ -22,6 +22,132 @@ def create_itinerary(client: TestClient, trip_id: int, **overrides) -> dict:
     return res.json()
 
 
+def test_viewer_can_calculate_saved_itinerary_routes(client, monkeypatch):
+    from app.core.config import get_settings
+    from tests.test_invitations import extract_token, invite_member
+
+    register_and_login(client, "route-owner@example.com")
+    trip = create_trip(client)
+    later_item = create_itinerary(
+        client,
+        trip["id"],
+        title="Later",
+        start_at="2026-11-02T10:00:00+09:00",
+        end_at="2026-11-02T11:00:00+09:00",
+        latitude=33.2,
+        longitude=126.2,
+    )
+    earlier_item = create_itinerary(
+        client,
+        trip["id"],
+        title="Earlier",
+        start_at="2026-11-01T23:30:00-05:00",
+        end_at="2026-11-02T00:30:00-05:00",
+        latitude=33.1,
+        longitude=126.1,
+    )
+    invitation = invite_member(client, trip["id"], "route-viewer@example.com", "viewer")
+    token = extract_token(invitation["invite_url"])
+    client.post("/api/auth/logout")
+    register_and_login(client, "route-viewer@example.com")
+    client.post(f"/api/invitations/{token}/accept")
+    monkeypatch.setattr(get_settings(), "google_maps_api_key", "test-key")
+    route_calls = []
+
+    def fake_compute_walking_leg(**kwargs):
+        route_calls.append(kwargs)
+        return 600, 800
+
+    monkeypatch.setattr(
+        "app.services.itinerary_route_service.compute_walking_leg",
+        fake_compute_walking_leg,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/itinerary-routes",
+        json={"date": "2026-11-02"},
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["travel_mode"] == "WALK"
+    assert data["date"] == "2026-11-02"
+    assert data["legs"] == [
+        {
+            "from_itinerary_id": later_item["id"],
+            "to_itinerary_id": earlier_item["id"],
+            "duration_seconds": 600,
+            "distance_meters": 800,
+        }
+    ]
+    assert len(route_calls) == 1
+    assert data["warnings"]
+
+
+def test_saved_itinerary_routes_reject_date_outside_trip(client):
+    register_and_login(client, "route-invalid-date@example.com")
+    trip = create_trip(client)
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/itinerary-routes",
+        json={"date": "2026-10-31"},
+    )
+
+    assert res.status_code == 422
+    assert res.json()["code"] == "ITINERARY_ROUTE_INVALID_DATE"
+
+
+def test_saved_itinerary_routes_require_two_coordinate_items(client):
+    register_and_login(client, "route-not-enough@example.com")
+    trip = create_trip(client)
+    create_itinerary(
+        client,
+        trip["id"],
+        start_at="2026-11-01T08:00:00+09:00",
+        end_at="2026-11-01T09:00:00+09:00",
+        latitude=33.1,
+        longitude=126.1,
+    )
+    create_itinerary(
+        client,
+        trip["id"],
+        title="No coordinates",
+        start_at="2026-11-01T10:00:00+09:00",
+        end_at="2026-11-01T11:00:00+09:00",
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/itinerary-routes",
+        json={"date": "2026-11-01"},
+    )
+
+    assert res.status_code == 422
+    assert res.json()["code"] == "ITINERARY_ROUTE_NOT_ENOUGH_PLACES"
+
+
+def test_saved_itinerary_routes_limit_places_to_ten(client):
+    register_and_login(client, "route-too-many@example.com")
+    trip = create_trip(client)
+    for index in range(11):
+        create_itinerary(
+            client,
+            trip["id"],
+            title=f"Place {index + 1}",
+            start_at=f"2026-11-01T08:{index:02d}:00+09:00",
+            end_at=f"2026-11-01T09:{index:02d}:00+09:00",
+            latitude=33.1 + index / 1000,
+            longitude=126.1 + index / 1000,
+        )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/itinerary-routes",
+        json={"date": "2026-11-01"},
+    )
+
+    assert res.status_code == 422
+    assert res.json()["code"] == "ITINERARY_ROUTE_TOO_MANY_PLACES"
+
+
 def test_create_itinerary_with_location_metadata_success(client):
     register_and_login(client, "owner-location-create@example.com")
     trip = create_trip(client)
@@ -287,6 +413,25 @@ def test_editor_can_create_update_delete_itinerary(client):
 
     delete_res = client.delete(f"/api/itineraries/{item['id']}")
     assert delete_res.status_code == 204
+
+
+def test_patch_itinerary_time_only(client):
+    register_and_login(client, "owner-time@example.com")
+    trip = create_trip(client)
+    item = create_itinerary(client, trip["id"])
+
+    res = client.patch(
+        f"/api/itineraries/{item['id']}",
+        json={
+            "start_at": "2026-11-01T08:00:00+09:00",
+            "end_at": "2026-11-01T09:00:00+09:00",
+            "version": item["version"],
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["title"] == item["title"]
+    assert body["version"] == item["version"] + 1
 
 
 def test_viewer_cannot_mutate_itinerary(client):

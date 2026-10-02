@@ -52,6 +52,13 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'id="trip-mobile-tab-map"' in text
     assert 'id="item-form-cancel"' in text
     assert 'id="trip-edit-cancel"' in text
+    assert 'id="quick-time-edit-panel"' in text
+    assert 'id="quick-time-edit-form"' in text
+    assert 'id="quick-time-edit-start-at"' in text
+    assert 'id="quick-time-edit-end-at"' in text
+    assert 'id="quick-time-edit-cancel"' in text
+    assert 'id="quick-time-edit-error"' in text
+    assert "quick-time-edit-btn" in text
     assert 'id="item-place-search-toggle-btn"' in text
     assert 'id="item-place-search-panel"' in text
     assert 'id="item-place-search-query"' in text
