@@ -304,6 +304,27 @@ button.secondary, .button.secondary {
   overflow: visible;
 }
 
+#trip-map-panel .mobile-itinerary-map-detail {
+  display: none;
+}
+
+.trip-schedule-card .item-card.is-map-focused {
+  border-color: var(--color-primary, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+  animation: item-card-map-focus 1.8s ease-out;
+}
+
+@keyframes item-card-map-focus {
+  from { background-color: rgba(37, 99, 235, 0.12); }
+  to { background-color: var(--color-card); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trip-schedule-card .item-card.is-map-focused {
+    animation: none;
+  }
+}
+
 .trip-schedule-card .item-card-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1070,6 +1091,39 @@ body.tools-drawer-open {
 
   #travel-map {
     min-height: 420px;
+  }
+
+  #trip-map-panel .mobile-itinerary-map-detail:not([hidden]) {
+    display: block;
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    max-height: 40vh;
+    overflow-y: auto;
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+  }
+
+  #trip-map-panel .mobile-itinerary-map-detail-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  #trip-map-panel .mobile-itinerary-map-detail-title {
+    margin: 0 0 0.35rem;
+    overflow-wrap: anywhere;
+  }
+
+  #trip-map-panel .mobile-itinerary-map-detail .item-meta {
+    overflow-wrap: anywhere;
+  }
+
+  #trip-map-panel #mobile-itinerary-map-detail-open-schedule-btn {
+    width: 100%;
+    margin-top: 0.5rem;
   }
 
   .trip-tools-drawer {

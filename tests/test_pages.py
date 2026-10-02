@@ -163,6 +163,22 @@ def test_trip_detail_keeps_inline_js_inside_script_tag(client):
     assert inline_script_start < marker_index < inline_script_end
 
 
+def test_trip_detail_contains_itinerary_map_link_helpers(client):
+    register_and_login(client, "pages-map-link@example.com")
+    trip = create_trip(client)
+
+    res = client.get(f"/trips/{trip['id']}")
+
+    assert res.status_code == 200
+    assert "function focusItineraryCard(" in res.text
+    assert "function focusItineraryMarker(" in res.text
+    assert "is-map-focused" in res.text
+    assert 'id="mobile-itinerary-map-detail"' in res.text
+    assert 'id="mobile-itinerary-map-detail-close-btn"' in res.text
+    assert 'id="mobile-itinerary-map-detail-open-schedule-btn"' in res.text
+    assert "function showMobileItineraryDetail(" in res.text
+
+
 def test_trip_detail_places_maps_script_after_inline_script(client):
     settings = get_settings()
     original_browser_key = settings.google_maps_browser_api_key
