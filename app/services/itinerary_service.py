@@ -96,6 +96,48 @@ def create_itinerary(db: Session, trip_id: int, user: User, data: ItineraryCreat
     return _serialize(db, item)
 
 
+def create_itineraries(db: Session, trip_id: int, user: User, items: list[ItineraryCreate]) -> list[dict]:
+    try:
+        require_editor_or_owner(db, trip_id, user.id)
+        trip = require_trip(db, trip_id)
+
+        itinerary_items = []
+        for data in items:
+            if data.start_at:
+                _check_within_trip_range(trip, data.start_at)
+            if data.end_at:
+                _check_within_trip_range(trip, data.end_at)
+            itinerary_items.append(
+                ItineraryItem(
+                    trip_id=trip_id,
+                    title=data.title,
+                    category=data.category,
+                    status=data.status.value,
+                    start_at=data.start_at,
+                    end_at=data.end_at,
+                    location_name=data.location_name,
+                    memo=data.memo,
+                    place_candidate_id=data.place_candidate_id,
+                    place_provider=data.place_provider,
+                    external_place_id=data.external_place_id,
+                    latitude=data.latitude,
+                    longitude=data.longitude,
+                    created_by=user.id,
+                    updated_by=user.id,
+                    version=1,
+                )
+            )
+
+        db.add_all(itinerary_items)
+        db.flush()
+        serialized = [_serialize(db, item) for item in itinerary_items]
+        db.commit()
+        return serialized
+    except Exception:
+        db.rollback()
+        raise
+
+
 def get_itinerary(db: Session, item_id: int, user_id: int) -> dict:
     item = db.get(ItineraryItem, item_id)
     if item is None:

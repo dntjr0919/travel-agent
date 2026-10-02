@@ -134,6 +134,12 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'aria-controls="trip-tools-drawer"' in text
     assert 'id="trip-tools-tab-places"' in text
     assert 'id="trip-tools-tab-ai"' in text
+    assert 'id="external-llm-prompt"' in text
+    assert 'id="external-llm-copy-prompt-btn"' in text
+    assert 'id="external-llm-json"' in text
+    assert 'id="external-llm-analyze-btn"' in text
+    assert 'id="external-llm-results"' in text
+    assert 'id="external-llm-import-btn"' in text
     assert "여행 준비 센터" in text
     assert "AI 일정" in text
     assert 'id="trip-tools-tab-reservations"' in text

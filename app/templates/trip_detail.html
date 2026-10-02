@@ -602,6 +602,30 @@
   <div id="ai-itinerary-route-loading" class="muted small" style="display:none; margin-top: 0.5rem;">도보 동선을 계산하는 중...</div>
   <p id="ai-itinerary-route-error" class="error-text"></p>
   <div id="ai-itinerary-result" style="display:none; margin-top: 0.75rem;"></div>
+
+  <section id="external-llm-import" class="external-llm-import" aria-labelledby="external-llm-heading">
+    <div class="external-llm-heading">
+      <h3 id="external-llm-heading">외부 LLM 일정 초안 가져오기</h3>
+      <p class="muted small">Gemini, ChatGPT, Claude 등에서 만든 일정 JSON을 붙여넣으세요.</p>
+    </div>
+    <label class="external-llm-field">
+      프롬프트
+      <textarea id="external-llm-prompt" rows="8" readonly></textarea>
+    </label>
+    <div class="external-llm-actions">
+      <button type="button" id="external-llm-copy-prompt-btn" class="secondary">프롬프트 복사</button>
+    </div>
+    <label class="external-llm-field">
+      JSON 일정 초안
+      <textarea id="external-llm-json" rows="10" placeholder="{ &quot;version&quot;: 1, &quot;items&quot;: [] }"></textarea>
+    </label>
+    <div class="external-llm-actions">
+      <button type="button" id="external-llm-analyze-btn" class="secondary">일정 분석</button>
+      <button type="button" id="external-llm-import-btn" disabled>선택한 0개 일정 추가</button>
+    </div>
+    <p id="external-llm-feedback" class="external-llm-feedback" role="status" aria-live="polite"></p>
+    <div id="external-llm-results" class="external-llm-results" aria-live="polite"></div>
+  </section>
 </section>
 
   </div>
@@ -5187,6 +5211,204 @@ function applyReservationAnalysisResult(result, inputBookingUrl) {
 
 toggleExternalBookingFields();
 
+const externalLlmJsonInput = document.getElementById("external-llm-json");
+const externalLlmPromptInput = document.getElementById("external-llm-prompt");
+const externalLlmAnalyzeButton = document.getElementById("external-llm-analyze-btn");
+const externalLlmImportButton = document.getElementById("external-llm-import-btn");
+const externalLlmResults = document.getElementById("external-llm-results");
+const externalLlmFeedback = document.getElementById("external-llm-feedback");
+let externalLlmAnalysisItems = [];
+let externalLlmAnalyzedRawJson = "";
+
+function setExternalLlmFeedback(message, type = "") {
+  externalLlmFeedback.textContent = message;
+  externalLlmFeedback.classList.toggle("is-error", type === "error");
+  externalLlmFeedback.classList.toggle("is-success", type === "success");
+}
+
+function buildExternalLlmPrompt() {
+  if (!currentTrip) {
+    return "";
+  }
+
+  const tripDetails = JSON.stringify({
+    title: currentTrip.title,
+    destination: currentTrip.destination || "",
+    start_date: currentTrip.start_date,
+    end_date: currentTrip.end_date,
+  });
+
+  return [
+    "다음 여행의 일정 초안을 만들어 주세요.",
+    `여행 정보: ${tripDetails}`,
+    "설명이나 마크다운 코드 펜스 없이 JSON 객체 하나만 반환하세요. 최상위 구조는 {\"version\":1,\"items\":[...]}이며 items는 1~30개입니다.",
+    "각 일정은 다음 키만 사용하세요: date(필수, YYYY-MM-DD), start_time(필수, 24시간 HH:MM), end_time(선택, HH:MM), title(필수, 1~120자), memo(선택, 최대 2000자), place_name(선택, 최대 200자), place_url(선택, HTTPS Google 지도 URL 또는 빈 문자열).",
+    "date는 여행 시작일과 종료일 사이로 지정하세요. end_time은 start_time보다 늦게 지정하세요. 위 키 외에 좌표, place ID, provider 등 다른 키를 추가하지 마세요. Google 지도 URL을 확실히 모르면 place_url을 빈 문자열로 두세요.",
+    '형식 예시: {"version":1,"items":[{"date":"' + currentTrip.start_date + '","start_time":"09:00","end_time":"10:00","title":"박물관 방문","memo":"","place_name":"","place_url":""}]}',
+  ].join("\n");
+}
+
+function updateExternalLlmImportButton() {
+  const selectedCount = externalLlmResults.querySelectorAll("input[type=checkbox]:checked:not(:disabled)").length;
+  externalLlmImportButton.textContent = `선택한 ${selectedCount}개 일정 추가`;
+  externalLlmImportButton.disabled = selectedCount === 0;
+}
+
+function clearExternalLlmAnalysis() {
+  externalLlmAnalysisItems = [];
+  externalLlmAnalyzedRawJson = "";
+  externalLlmResults.replaceChildren();
+  updateExternalLlmImportButton();
+}
+
+function renderExternalLlmAnalysis(items) {
+  externalLlmResults.replaceChildren();
+  externalLlmAnalysisItems = items;
+
+  for (const item of items) {
+    const row = document.createElement("div");
+    row.className = `external-llm-item${item.valid ? "" : " is-invalid"}`;
+
+    const label = document.createElement("label");
+    label.className = "external-llm-check-row";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = String(item.index);
+    checkbox.checked = item.valid;
+    checkbox.disabled = !item.valid;
+    checkbox.setAttribute("aria-label", `선택: ${item.title || `일정 ${item.index + 1}`}`);
+    checkbox.addEventListener("change", updateExternalLlmImportButton);
+
+    const dateLabel = document.createElement("span");
+    dateLabel.className = "external-llm-date";
+    dateLabel.textContent = item.date ? item.date.slice(5).replace("-", "/") : "--/--";
+
+    const title = document.createElement("span");
+    title.className = "external-llm-title";
+    title.textContent = item.title || `일정 ${item.index + 1}`;
+
+    label.append(checkbox, dateLabel, title);
+    row.append(label);
+
+    if (!item.valid && item.error) {
+      const error = document.createElement("span");
+      error.className = "external-llm-item-error";
+      error.textContent = item.error;
+      row.append(error);
+    }
+
+    externalLlmResults.append(row);
+  }
+
+  updateExternalLlmImportButton();
+}
+
+async function copyExternalLlmPrompt() {
+  const prompt = buildExternalLlmPrompt();
+  if (!prompt) {
+    setExternalLlmFeedback("여행 정보를 불러온 뒤 다시 시도하세요.", "error");
+    return;
+  }
+
+  externalLlmPromptInput.value = prompt;
+  try {
+    if (!navigator.clipboard?.writeText) {
+      throw new Error("Clipboard API unavailable");
+    }
+    await navigator.clipboard.writeText(prompt);
+    setExternalLlmFeedback("프롬프트를 복사했습니다.", "success");
+  } catch {
+    externalLlmPromptInput.focus();
+    externalLlmPromptInput.select();
+    setExternalLlmFeedback("복사할 수 없습니다. 위 프롬프트를 선택해 직접 복사하세요.", "error");
+  }
+}
+
+async function analyzeExternalLlmDraft() {
+  const rawJson = externalLlmJsonInput.value;
+  clearExternalLlmAnalysis();
+  setExternalLlmFeedback("");
+  if (!rawJson.trim()) {
+    setExternalLlmFeedback("JSON 일정 초안을 붙여넣으세요.", "error");
+    return;
+  }
+
+  externalLlmAnalyzeButton.disabled = true;
+  externalLlmJsonInput.disabled = true;
+  try {
+    const response = await apiFetch(`/api/trips/${TRIP_ID}/external-llm-itinerary/analyze`, {
+      method: "POST",
+      body: JSON.stringify({ raw_json: rawJson }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setExternalLlmFeedback(typeof data.detail === "string" ? data.detail : "일정 초안을 분석하지 못했습니다.", "error");
+      return;
+    }
+
+    externalLlmAnalyzedRawJson = rawJson;
+    renderExternalLlmAnalysis(data.items || []);
+    const validCount = externalLlmAnalysisItems.filter((item) => item.valid).length;
+    setExternalLlmFeedback(`총 ${externalLlmAnalysisItems.length}개 중 ${validCount}개 일정을 추가할 수 있습니다.`, "success");
+  } catch {
+    setExternalLlmFeedback("일정 분석 중 네트워크 오류가 발생했습니다.", "error");
+  } finally {
+    externalLlmAnalyzeButton.disabled = false;
+    externalLlmJsonInput.disabled = false;
+  }
+}
+
+async function importExternalLlmDraft() {
+  const selectedIndices = [...externalLlmResults.querySelectorAll("input[type=checkbox]:checked:not(:disabled)")]
+    .map((checkbox) => Number(checkbox.value));
+  if (!selectedIndices.length || externalLlmJsonInput.value !== externalLlmAnalyzedRawJson) {
+    updateExternalLlmImportButton();
+    return;
+  }
+
+  externalLlmImportButton.disabled = true;
+  externalLlmAnalyzeButton.disabled = true;
+  externalLlmJsonInput.disabled = true;
+  externalLlmResults.querySelectorAll("input[type=checkbox]").forEach((checkbox) => {
+    checkbox.disabled = true;
+  });
+  setExternalLlmFeedback("");
+
+  try {
+    const response = await apiFetch(`/api/trips/${TRIP_ID}/external-llm-itinerary/import`, {
+      method: "POST",
+      body: JSON.stringify({ raw_json: externalLlmAnalyzedRawJson, selected_indices: selectedIndices }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setExternalLlmFeedback(typeof data.detail === "string" ? data.detail : "선택한 일정을 추가하지 못했습니다.", "error");
+      return;
+    }
+
+    await loadItineraries();
+    externalLlmJsonInput.value = "";
+    clearExternalLlmAnalysis();
+    setExternalLlmFeedback(`${data.created_count}개 일정을 여행에 추가했습니다.`, "success");
+  } catch {
+    setExternalLlmFeedback("일정 추가 중 네트워크 오류가 발생했습니다.", "error");
+  } finally {
+    externalLlmJsonInput.disabled = false;
+    externalLlmAnalyzeButton.disabled = false;
+    externalLlmResults.querySelectorAll("input[type=checkbox]").forEach((checkbox) => {
+      checkbox.disabled = !externalLlmAnalysisItems[Number(checkbox.value)]?.valid;
+    });
+    updateExternalLlmImportButton();
+  }
+}
+
+document.getElementById("external-llm-copy-prompt-btn").addEventListener("click", copyExternalLlmPrompt);
+externalLlmAnalyzeButton.addEventListener("click", analyzeExternalLlmDraft);
+externalLlmImportButton.addEventListener("click", importExternalLlmDraft);
+externalLlmJsonInput.addEventListener("input", () => {
+  clearExternalLlmAnalysis();
+  setExternalLlmFeedback("");
+});
+
 requireLogin().then(async (user) => {
   if (!user) {
     return;
@@ -5199,6 +5421,8 @@ requireLogin().then(async (user) => {
   if (!currentTrip) {
     return;
   }
+
+  externalLlmPromptInput.value = buildExternalLlmPrompt();
 
   await Promise.all([
     loadItineraries(),
