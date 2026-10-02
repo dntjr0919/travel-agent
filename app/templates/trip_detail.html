@@ -1298,6 +1298,7 @@ function applyItemPlaceSelection(place) {
   const titleInput = form.title;
   const locationInput = form.location_name;
   const categoryInput = form.category;
+  const memoInput = form.memo;
   const latitudeInput = form.latitude;
   const longitudeInput = form.longitude;
   const placeProviderInput = form.place_provider;
@@ -1313,6 +1314,16 @@ function applyItemPlaceSelection(place) {
   placeCandidateIdInput.value = "";
   placeProviderInput.value = place.provider || "";
   externalPlaceIdInput.value = place.external_place_id || "";
+
+const mapUrl = place.map_url || place.mapurl || "";
+
+if (mapUrl && !memoInput.value.includes(mapUrl)) {
+  const mapMemoLine = `지도: ${mapUrl}`;
+
+  memoInput.value = memoInput.value.trim()
+    ? `${memoInput.value.trim()}\n${mapMemoLine}`
+    : mapMemoLine;
+}
 
   const latitudeValue = Number(place.latitude);
   const longitudeValue = Number(place.longitude);
@@ -1621,15 +1632,28 @@ function buildSavedCandidateInfoWindowContent(candidate, canEdit) {
 
 function buildItineraryInfoWindowContent(item) {
   const title = escapeHtml(item.title || "제목 없음");
-  const locationName = item.location_name ? escapeHtml(item.location_name) : "장소 정보 없음";
+  const locationName = item.location_name
+    ? escapeHtml(item.location_name)
+    : "장소 정보 없음";
   const memo = item.memo ? escapeHtml(item.memo) : "";
   const statusLabel = STATUS_LABELS[item.status] || item.status || "예정";
-  const startText = item.start_at ? escapeHtml(formatDateTime(item.start_at)) : "미정";
-  const endText = item.end_at ? escapeHtml(formatDateTime(item.end_at)) : "미정";
+  const startText = item.start_at
+    ? escapeHtml(formatDateTime(item.start_at))
+    : "미정";
+  const endText = item.end_at
+    ? escapeHtml(formatDateTime(item.end_at))
+    : "미정";
+
+  const mapUrlMatch = item.memo?.match(/^지도:\s*(https?:\/\/\S+)$/m);
+  const mapUrl = mapUrlMatch ? mapUrlMatch[1] : "";
+
+  const titleHtml = mapUrl
+    ? `<a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${title}</a>`
+    : title;
 
   return `
     <div style="max-width: 280px; line-height: 1.45;">
-      <p style="margin: 0 0 0.35rem;"><strong>${title}</strong></p>
+      <p style="margin: 0 0 0.35rem;"><strong>${titleHtml}</strong></p>
       <p style="margin: 0 0 0.25rem;">상태: ${escapeHtml(statusLabel)}</p>
       <p style="margin: 0 0 0.25rem;">시작: ${startText}</p>
       <p style="margin: 0 0 0.25rem;">종료: ${endText}</p>
