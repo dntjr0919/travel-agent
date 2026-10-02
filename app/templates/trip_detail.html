@@ -635,6 +635,7 @@ let currentItineraries = [];
 let currentAiItineraryDraft = null;
 let aiItineraryRouteLegMap = {};
 let currentPlaceCandidates = [];
+updateTravelMapTabCounts();
 let travelMap = null;
 let travelMapInfoWindow = null;
 let travelMapMarkers = [];
@@ -1734,6 +1735,24 @@ function updateTravelMapTabButtons() {
   }
 }
 
+function updateTravelMapTabCounts() {
+  const days = currentAiItineraryDraft?.days;
+  const aiCount = Array.isArray(days)
+    ? days.reduce((sum, day) => sum + (Array.isArray(day?.items) ? day.items.length : 0), 0)
+    : 0;
+  const labels = {
+    itineraries: `일정 ${Array.isArray(currentItineraries) ? currentItineraries.length : 0}`,
+    candidates: `장소 후보 ${Array.isArray(currentPlaceCandidates) ? currentPlaceCandidates.length : 0}`,
+    ai: `AI 초안 ${aiCount}`,
+  };
+  for (const [tabId, label] of Object.entries(labels)) {
+    const button = document.getElementById(`travel-map-tab-${tabId}`);
+    if (button) {
+      button.textContent = label;
+    }
+  }
+}
+
 function buildTripDateOptions() {
   if (!currentTrip?.start_date || !currentTrip?.end_date) {
     return [];
@@ -2796,6 +2815,7 @@ function renderPlaceCandidates(candidates) {
   const listEl = document.getElementById("place-candidate-list");
   const emptyEl = document.getElementById("place-candidate-empty");
   currentPlaceCandidates = Array.isArray(candidates) ? candidates : [];
+  updateTravelMapTabCounts();
 
   if (!candidates || candidates.length === 0) {
     listEl.innerHTML = "";
@@ -2926,6 +2946,7 @@ async function loadPlaceCandidates() {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       currentPlaceCandidates = [];
+      updateTravelMapTabCounts();
       refreshSavedCandidatesMap();
       listEl.innerHTML = `
         <p class="error-text">
@@ -2940,6 +2961,7 @@ async function loadPlaceCandidates() {
   } catch (error) {
     console.error("장소 후보 목록 오류", error);
     currentPlaceCandidates = [];
+    updateTravelMapTabCounts();
     refreshSavedCandidatesMap();
 
     listEl.innerHTML = `
@@ -3261,6 +3283,7 @@ function renderItineraries(items) {
   const canEdit = currentRole === "owner" || currentRole === "editor";
   initializeItineraryInteractions();
   currentItineraries = Array.isArray(items) ? items : [];
+  updateTravelMapTabCounts();
   updateTravelMapItineraryDateOptions();
 
   if (items.length === 0) {
@@ -3840,6 +3863,7 @@ if (aiItineraryForm) {
         aiItineraryResultEl.innerHTML = "";
         clearAiItineraryRouteState();
         currentAiItineraryDraft = null;
+        updateTravelMapTabCounts();
         refreshAiItineraryMap();
         updateAiItineraryRouteButtonVisibility();
         return;
@@ -3847,6 +3871,7 @@ if (aiItineraryForm) {
 
       clearAiItineraryRouteState();
       currentAiItineraryDraft = data;
+      updateTravelMapTabCounts();
       renderAiItineraryDraft(currentAiItineraryDraft);
     } catch (error) {
       aiItineraryErrorEl.textContent = "AI 코스 생성 중 네트워크 오류가 발생했습니다.";
