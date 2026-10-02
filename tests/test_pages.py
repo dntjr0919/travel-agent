@@ -22,17 +22,29 @@ def test_trip_detail_returns_200_for_authenticated_user(client):
     assert "text/html" in res.headers.get("content-type", "")
 
 
-def test_trip_detail_contains_saved_candidates_map_markup(client):
-    register_and_login(client, "pages-saved-candidates-map@example.com")
+def test_trip_detail_contains_unified_map_and_layout_markup(client):
+    register_and_login(client, "pages-unified-map-markup@example.com")
     trip = create_trip(client)
 
     res = client.get(f"/trips/{trip['id']}")
 
     assert res.status_code == 200
     text = res.text
-    assert 'id="saved-candidates-map-panel"' in text
+    assert 'id="travel-map"' in text
     assert 'id="saved-candidates-map-filter"' in text
-    assert 'id="saved-candidates-map"' in text
+    assert 'id="trip-tools-drawer"' in text
+    assert 'id="trip-tools-backdrop"' in text
+    assert 'id="trip-mobile-tabs"' in text
+    assert 'id="trip-mobile-tab-schedule"' in text
+    assert 'id="trip-mobile-tab-map"' in text
+    assert 'id="item-form-cancel"' in text
+    assert 'id="trip-edit-cancel"' in text
+    assert 'id="item-place-search-toggle-btn"' in text
+    assert 'id="item-place-search-panel"' in text
+    assert 'id="item-place-search-query"' in text
+    assert 'id="item-place-search-results"' in text
+    assert 'id="ai-itinerary-map"' not in text
+    assert 'id="saved-candidates-map"' not in text
 
 
 def test_trip_detail_renders_google_maps_script_when_browser_key_is_set(client):

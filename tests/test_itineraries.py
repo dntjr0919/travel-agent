@@ -22,6 +22,168 @@ def create_itinerary(client: TestClient, trip_id: int, **overrides) -> dict:
     return res.json()
 
 
+def test_create_itinerary_with_location_metadata_success(client):
+    register_and_login(client, "owner-location-create@example.com")
+    trip = create_trip(client)
+
+    payload = {
+        "title": "맛집 방문",
+        "category": "food",
+        "start_at": "2026-11-01T12:00:00+09:00",
+        "end_at": "2026-11-01T13:00:00+09:00",
+        "location_name": "제주 맛집",
+        "place_candidate_id": 12,
+        "place_provider": "google",
+        "external_place_id": "google-place-123",
+        "latitude": 33.4996,
+        "longitude": 126.5312,
+    }
+
+    res = client.post(f"/api/trips/{trip['id']}/itineraries", json=payload)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["place_candidate_id"] == 12
+    assert data["place_provider"] == "google"
+    assert data["external_place_id"] == "google-place-123"
+    assert data["latitude"] == 33.4996
+    assert data["longitude"] == 126.5312
+
+
+def test_create_itinerary_rejects_only_latitude(client):
+    register_and_login(client, "owner-location-lat-only@example.com")
+    trip = create_trip(client)
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/itineraries",
+        json={
+            "title": "위도만 있음",
+            "category": "other",
+            "latitude": 33.4,
+        },
+    )
+
+    assert res.status_code == 422
+
+
+def test_create_itinerary_rejects_only_longitude(client):
+    register_and_login(client, "owner-location-lng-only@example.com")
+    trip = create_trip(client)
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/itineraries",
+        json={
+            "title": "경도만 있음",
+            "category": "other",
+            "longitude": 126.5,
+        },
+    )
+
+    assert res.status_code == 422
+
+
+def test_create_itinerary_rejects_latitude_out_of_range(client):
+    register_and_login(client, "owner-location-lat-range@example.com")
+    trip = create_trip(client)
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/itineraries",
+        json={
+            "title": "범위 초과 위도",
+            "category": "other",
+            "latitude": 95,
+            "longitude": 126.5,
+        },
+    )
+
+    assert res.status_code == 422
+
+
+def test_create_itinerary_rejects_longitude_out_of_range(client):
+    register_and_login(client, "owner-location-lng-range@example.com")
+    trip = create_trip(client)
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/itineraries",
+        json={
+            "title": "범위 초과 경도",
+            "category": "other",
+            "latitude": 33.5,
+            "longitude": 181,
+        },
+    )
+
+    assert res.status_code == 422
+
+
+def test_create_itinerary_without_location_metadata_still_works(client):
+    register_and_login(client, "owner-location-none@example.com")
+    trip = create_trip(client)
+
+    item = create_itinerary(client, trip["id"])
+
+    assert item["place_candidate_id"] is None
+    assert item["place_provider"] is None
+    assert item["external_place_id"] is None
+    assert item["latitude"] is None
+    assert item["longitude"] is None
+
+
+def test_existing_itinerary_list_works_without_location_metadata(client):
+    register_and_login(client, "owner-location-list@example.com")
+    trip = create_trip(client)
+    create_itinerary(client, trip["id"])
+
+    res = client.get(f"/api/trips/{trip['id']}/itineraries")
+
+    assert res.status_code == 200
+    items = res.json()
+    assert len(items) == 1
+    assert items[0]["latitude"] is None
+    assert items[0]["longitude"] is None
+
+
+def test_update_itinerary_location_metadata_updates_and_keeps_version_policy(client):
+    register_and_login(client, "owner-location-update@example.com")
+    trip = create_trip(client)
+    created = create_itinerary(
+        client,
+        trip["id"],
+        place_candidate_id=1,
+        place_provider="google",
+        external_place_id="p1",
+        latitude=33.1,
+        longitude=126.1,
+    )
+
+    update_res = client.patch(
+        f"/api/itineraries/{created['id']}",
+        json={
+            "version": created["version"],
+            "place_provider": "kakao",
+            "external_place_id": "kakao-place-9",
+            "latitude": 33.2,
+            "longitude": 126.2,
+        },
+    )
+    assert update_res.status_code == 200
+    updated = update_res.json()
+    assert updated["place_candidate_id"] == 1
+    assert updated["place_provider"] == "kakao"
+    assert updated["external_place_id"] == "kakao-place-9"
+    assert updated["latitude"] == 33.2
+    assert updated["longitude"] == 126.2
+
+    stale_res = client.patch(
+        f"/api/itineraries/{created['id']}",
+        json={
+            "version": created["version"],
+            "title": "stale update",
+        },
+    )
+    assert stale_res.status_code == 409
+    assert stale_res.json()["code"] == "ITINERARY_VERSION_CONFLICT"
+
+
 def test_transport_draft_payload_can_create_itinerary(client):
     register_and_login(client, "owner-transport@example.com")
     trip = create_trip(client)

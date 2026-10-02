@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base, TZDateTime
@@ -38,6 +38,11 @@ class ItineraryItem(Base):
     end_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     location_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     memo: Mapped[str | None] = mapped_column(Text, nullable=True)
+    place_candidate_id: Mapped[int | None] = mapped_column(nullable=True)
+    place_provider: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    external_place_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
 from app.models.itinerary import ItineraryItem, ItineraryStatus
+from app.models.trip import Trip
 from app.models.user import User
 from app.schemas.itinerary import ItineraryCreate, ItineraryUpdate
 from app.services.permission_service import require_editor_or_owner, require_member, require_trip
@@ -36,6 +37,11 @@ def _serialize(db: Session, item: ItineraryItem) -> dict:
         "end_at": item.end_at,
         "location_name": item.location_name,
         "memo": item.memo,
+        "place_candidate_id": item.place_candidate_id,
+        "place_provider": item.place_provider,
+        "external_place_id": item.external_place_id,
+        "latitude": item.latitude,
+        "longitude": item.longitude,
         "created_by": item.created_by,
         "updated_by": item.updated_by,
         "created_by_name": creator.display_name if creator else "알 수 없음",
@@ -75,6 +81,11 @@ def create_itinerary(db: Session, trip_id: int, user: User, data: ItineraryCreat
         end_at=data.end_at,
         location_name=data.location_name,
         memo=data.memo,
+        place_candidate_id=data.place_candidate_id,
+        place_provider=data.place_provider,
+        external_place_id=data.external_place_id,
+        latitude=data.latitude,
+        longitude=data.longitude,
         created_by=user.id,
         updated_by=user.id,
         version=1,

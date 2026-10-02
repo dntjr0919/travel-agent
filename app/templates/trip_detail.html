@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block title %}여행 상세 - Travel Planner{% endblock %}
 {% block content %}
+<div class="trip-detail-container">
 <div id="trip-header" class="page-header"></div>
+<div class="form-actions" style="margin-bottom: 0.75rem;">
+  <button id="open-tools-btn" type="button" class="button secondary">도구</button>
+</div>
 <div id="trip-edit-panel" class="card" style="display:none">
   <h2>여행 정보 수정</h2>
 
@@ -48,11 +52,21 @@
   <button id="conflict-reload">최신 내용 다시 불러오기</button>
 </div>
 
+<div id="trip-mobile-tabs" class="trip-mobile-tabs">
+  <button id="trip-mobile-tab-schedule" type="button" class="trip-mobile-tab is-active">일정</button>
+  <button id="trip-mobile-tab-map" type="button" class="trip-mobile-tab">지도</button>
+</div>
+
 <div id="item-form-panel" class="card" style="display:none">
   <h2 id="item-form-title">일정 추가</h2>
   <form id="item-form" class="form">
     <input type="hidden" name="item_id" />
     <input type="hidden" name="version" />
+    <input type="hidden" name="place_candidate_id" />
+    <input type="hidden" name="place_provider" />
+    <input type="hidden" name="external_place_id" />
+    <input type="hidden" name="latitude" />
+    <input type="hidden" name="longitude" />
     <label>제목
       <input type="text" name="title" required maxlength="200" />
     </label>
@@ -83,6 +97,51 @@
     <label>장소
       <input type="text" name="location_name" maxlength="200" />
     </label>
+
+    <button
+      type="button"
+      id="item-place-search-toggle-btn"
+      class="secondary"
+    >
+      장소 검색해서 선택
+    </button>
+
+    <div id="item-place-search-panel" class="item-place-search-panel" style="display:none">
+      <div class="form-grid-2">
+        <label>
+          검색 범위
+          <select id="item-place-search-scope">
+            <option value="domestic">국내 · Kakao</option>
+            <option value="international">해외 · Google</option>
+          </select>
+        </label>
+
+        <label>
+          장소 검색
+          <input
+            type="search"
+            id="item-place-search-query"
+            minlength="2"
+            placeholder="예: 성수 카페, tokyo sushi"
+          />
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" id="item-place-search-submit-btn">
+          검색
+        </button>
+      </div>
+
+      <p id="item-place-search-error" class="error-text"></p>
+      <p id="item-place-search-loading" class="muted small" style="display:none">
+        장소를 검색하는 중입니다...
+      </p>
+      <div id="item-place-search-results" class="place-search-results"></div>
+    </div>
+
+    <p id="item-place-search-status" class="muted small" style="display:none"></p>
+
     <label>메모
       <textarea name="memo" rows="3"></textarea>
     </label>
@@ -93,6 +152,19 @@
   </form>
   <p id="item-form-error" class="error-text"></p>
 </div>
+
+<div id="trip-tools-backdrop" class="trip-tools-backdrop" hidden></div>
+
+<aside
+  id="trip-tools-drawer"
+  class="trip-tools-drawer"
+  aria-hidden="true"
+  aria-label="여행 도구"
+>
+  <div class="trip-tools-drawer-header">
+    <h2>여행 도구</h2>
+    <button id="close-tools-btn" type="button" class="secondary">닫기</button>
+  </div>
 <section id="reservation-image-panel" class="card" style="display:none">
   <div class="section-header">
     <div>
@@ -337,15 +409,6 @@
   </div>
   <div id="ai-itinerary-route-loading" class="muted small" style="display:none; margin-top: 0.5rem;">도보 동선을 계산하는 중...</div>
   <p id="ai-itinerary-route-error" class="error-text"></p>
-  <p id="ai-itinerary-map-global-status" class="muted small" style="display:none; margin-top: 0.5rem;"></p>
-  <div id="ai-itinerary-map-panel" style="display:none;">
-    <label>
-      지도 날짜
-      <select id="ai-itinerary-map-date"></select>
-    </label>
-    <p id="ai-itinerary-map-status" class="muted small"></p>
-    <div id="ai-itinerary-map" aria-label="AI 여행 코스 지도"></div>
-  </div>
   <div id="ai-itinerary-result" style="display:none; margin-top: 0.75rem;"></div>
 </section>
 
@@ -401,23 +464,6 @@
     </div>
   </div>
 
-  <p id="saved-candidates-map-global-status" class="muted small" style="display:none; margin-bottom: 0.5rem;"></p>
-  <div id="saved-candidates-map-panel" style="display:none;">
-    <label>
-      지도 필터
-      <select id="saved-candidates-map-filter">
-        <option value="all">전체</option>
-        <option value="food">음식</option>
-        <option value="cafe">카페</option>
-        <option value="sightseeing">관광</option>
-        <option value="shopping">쇼핑</option>
-        <option value="other">기타</option>
-      </select>
-    </label>
-    <p id="saved-candidates-map-status" class="muted small"></p>
-    <div id="saved-candidates-map" aria-label="저장한 장소 후보 지도"></div>
-  </div>
-
   <div id="place-candidate-list" class="place-candidate-list"></div>
 
   <p id="place-candidate-empty" class="empty-state" style="display:none">
@@ -425,8 +471,51 @@
   </p>
 </section>
 
-<div id="itinerary-list"></div>
-<p id="itinerary-empty" class="empty-state" style="display:none">등록된 일정이 없습니다.</p>
+</aside>
+
+<div class="trip-main-layout">
+  <section id="trip-schedule-panel" class="card trip-schedule-card trip-mobile-panel is-active" data-mobile-panel="schedule">
+    <h2>일정</h2>
+    <div id="itinerary-list"></div>
+    <p id="itinerary-empty" class="empty-state" style="display:none">등록된 일정이 없습니다.</p>
+  </section>
+
+  <section id="trip-map-panel" class="card trip-map-card trip-mobile-panel" data-mobile-panel="map">
+    <div class="travel-map-tabs">
+      <button id="travel-map-tab-itineraries" type="button" class="travel-map-tab is-active">일정</button>
+      <button id="travel-map-tab-candidates" type="button" class="travel-map-tab">장소 후보</button>
+      <button id="travel-map-tab-ai" type="button" class="travel-map-tab">AI 초안</button>
+    </div>
+
+    <div class="travel-map-controls">
+      <label id="travel-map-control-itineraries">
+        일정 날짜
+        <select id="travel-map-itinerary-date"></select>
+      </label>
+
+      <label id="travel-map-control-candidates" style="display:none;">
+        후보 필터
+        <select id="saved-candidates-map-filter">
+          <option value="all">전체</option>
+          <option value="food">음식</option>
+          <option value="cafe">카페</option>
+          <option value="sightseeing">관광</option>
+          <option value="shopping">쇼핑</option>
+          <option value="other">기타</option>
+        </select>
+      </label>
+
+      <label id="travel-map-control-ai" style="display:none;">
+        AI 날짜
+        <select id="ai-itinerary-map-date"></select>
+      </label>
+    </div>
+
+    <p id="travel-map-status" class="muted small travel-map-status"></p>
+    <div id="travel-map" aria-label="여행 통합 지도"></div>
+  </section>
+</div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -481,17 +570,16 @@ let presenceSocket = null;
 let presenceReconnectTimer = null;
 let itemEndAtManuallyEdited = false;
 let externalAccommodationCheckoutManuallyEdited = false;
+let currentItineraries = [];
 let currentAiItineraryDraft = null;
 let aiItineraryRouteLegMap = {};
-let aiItineraryMap = null;
-let aiItineraryMapInfoWindow = null;
-let aiItineraryMapMarkers = [];
-let aiItineraryMapReady = false;
-let aiItineraryMapLoadFailed = false;
 let currentPlaceCandidates = [];
-let savedCandidatesMap = null;
-let savedCandidatesMapInfoWindow = null;
-let savedCandidatesMapMarkers = [];
+let travelMap = null;
+let travelMapInfoWindow = null;
+let travelMapMarkers = [];
+let travelMapReady = false;
+let travelMapLoadFailed = false;
+let activeTravelMapTab = "itineraries";
 
 function toDatetimeLocalValue(iso) {
   if (!iso) return "";
@@ -806,6 +894,8 @@ function openTripEditForm() {
   const panel = document.getElementById("trip-edit-panel");
   const form = document.getElementById("trip-edit-form");
 
+  hideItemForm();
+  closeToolsDrawer();
   document.getElementById("trip-edit-error").textContent = "";
 
   form.title.value = currentTrip.title || "";
@@ -819,8 +909,7 @@ function openTripEditForm() {
 }
 
 function closeTripEditForm() {
-  document.getElementById("trip-edit-panel").style.display = "none";
-  document.getElementById("trip-edit-error").textContent = "";
+  hideTripEditForm();
 }
 
 async function updateTrip() {
@@ -874,6 +963,293 @@ function canEditPlaces() {
   return currentRole === "owner" || currentRole === "editor";
 }
 
+function clearItemPlaceSearchStatus() {
+  const statusEl = document.getElementById("item-place-search-status");
+
+  if (!statusEl) {
+    return;
+  }
+
+  statusEl.textContent = "";
+  statusEl.style.display = "none";
+  statusEl.style.color = "";
+}
+
+function hideItemPlaceSearchPanel({ keepStatus = false } = {}) {
+  const panel = document.getElementById("item-place-search-panel");
+  const toggleBtn = document.getElementById("item-place-search-toggle-btn");
+  const scopeSelect = document.getElementById("item-place-search-scope");
+  const queryInput = document.getElementById("item-place-search-query");
+  const errorEl = document.getElementById("item-place-search-error");
+  const loadingEl = document.getElementById("item-place-search-loading");
+  const resultsEl = document.getElementById("item-place-search-results");
+  const submitBtn = document.getElementById("item-place-search-submit-btn");
+
+  if (panel) {
+    panel.style.display = "none";
+  }
+
+  if (toggleBtn) {
+    toggleBtn.setAttribute("aria-expanded", "false");
+  }
+
+  if (scopeSelect) {
+    scopeSelect.value = "domestic";
+  }
+
+  if (queryInput) {
+    queryInput.value = "";
+  }
+
+  if (errorEl) {
+    errorEl.textContent = "";
+  }
+
+  if (loadingEl) {
+    loadingEl.style.display = "none";
+  }
+
+  if (resultsEl) {
+    resultsEl.innerHTML = "";
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "검색";
+  }
+
+  if (!keepStatus) {
+    clearItemPlaceSearchStatus();
+  }
+}
+
+function showItemPlaceSearchPanel() {
+  const panel = document.getElementById("item-place-search-panel");
+  const toggleBtn = document.getElementById("item-place-search-toggle-btn");
+  const queryInput = document.getElementById("item-place-search-query");
+
+  if (!panel) {
+    return;
+  }
+
+  panel.style.display = "block";
+
+  if (toggleBtn) {
+    toggleBtn.setAttribute("aria-expanded", "true");
+  }
+
+  queryInput?.focus();
+}
+
+function toggleItemPlaceSearchPanel() {
+  const panel = document.getElementById("item-place-search-panel");
+
+  if (!panel) {
+    return;
+  }
+
+  if (panel.style.display === "block") {
+    hideItemPlaceSearchPanel({ keepStatus: true });
+    return;
+  }
+
+  showItemPlaceSearchPanel();
+}
+
+function setItemPlaceSearchStatus(message, type = "success") {
+  const statusEl = document.getElementById("item-place-search-status");
+
+  if (!statusEl) {
+    return;
+  }
+
+  if (!message) {
+    clearItemPlaceSearchStatus();
+    return;
+  }
+
+  statusEl.textContent = message;
+  statusEl.style.display = "block";
+  statusEl.style.color = type === "warning" ? "#d97706" : "#16a34a";
+}
+
+function resetItemPlaceSearchState() {
+  hideItemPlaceSearchPanel();
+
+  const form = document.getElementById("item-form");
+
+  if (!form) {
+    return;
+  }
+
+  form.place_candidate_id.value = "";
+  form.place_provider.value = "";
+  form.external_place_id.value = "";
+  form.latitude.value = "";
+  form.longitude.value = "";
+}
+
+function hideItemForm() {
+  document.getElementById("item-form-panel").style.display = "none";
+  document.getElementById("item-form-error").textContent = "";
+  document.getElementById("conflict-banner").style.display = "none";
+  clearItemPlaceSearchStatus();
+  hideItemPlaceSearchPanel();
+}
+
+function hideTripEditForm() {
+  document.getElementById("trip-edit-panel").style.display = "none";
+  document.getElementById("trip-edit-error").textContent = "";
+}
+
+function applyItemPlaceSelection(place) {
+  const form = document.getElementById("item-form");
+
+  if (!form) {
+    return;
+  }
+
+  const titleInput = form.title;
+  const locationInput = form.location_name;
+  const categoryInput = form.category;
+  const latitudeInput = form.latitude;
+  const longitudeInput = form.longitude;
+  const placeProviderInput = form.place_provider;
+  const externalPlaceIdInput = form.external_place_id;
+  const placeCandidateIdInput = form.place_candidate_id;
+
+  if (!titleInput.value.trim() && place.name) {
+    titleInput.value = place.name;
+  }
+
+  locationInput.value = place.name || "";
+  categoryInput.value = getItineraryCategoryForPlace(place);
+  placeCandidateIdInput.value = "";
+  placeProviderInput.value = place.provider || "";
+  externalPlaceIdInput.value = place.external_place_id || "";
+
+  const latitudeValue = Number(place.latitude);
+  const longitudeValue = Number(place.longitude);
+  const hasValidCoordinates = Number.isFinite(latitudeValue) && Number.isFinite(longitudeValue);
+
+  if (hasValidCoordinates) {
+    latitudeInput.value = String(latitudeValue);
+    longitudeInput.value = String(longitudeValue);
+    setItemPlaceSearchStatus("장소가 선택되었습니다. 저장하면 일정 지도에 표시됩니다.");
+  } else {
+    latitudeInput.value = "";
+    longitudeInput.value = "";
+    setItemPlaceSearchStatus("선택한 장소에 지도 좌표가 없어 일정 지도에는 표시되지 않습니다.", "warning");
+  }
+
+  hideItemPlaceSearchPanel({ keepStatus: true });
+}
+
+function renderItemPlaceSearchResults(results) {
+  const resultsEl = document.getElementById("item-place-search-results");
+
+  if (!resultsEl) {
+    return;
+  }
+
+  if (!Array.isArray(results) || results.length === 0) {
+    resultsEl.innerHTML = `
+      <p class="empty-state">
+        검색 결과가 없습니다. 다른 검색어를 입력해 보세요.
+      </p>
+    `;
+    return;
+  }
+
+  resultsEl.innerHTML = results.map((place) => `
+    <article class="place-result-card">
+      <div class="place-result-main">
+        <h3>${escapeHtml(place.name || "이름 없음")}</h3>
+
+        ${place.address ? `<p class="muted">📍 ${escapeHtml(place.address)}</p>` : ""}
+
+        <p class="muted small">
+          카테고리: ${escapeHtml(place.category || "미분류")}
+        </p>
+
+        <p class="muted small">
+          제공: ${place.provider === "google" ? "Google Places" : place.provider === "kakao" ? "Kakao Local" : escapeHtml(place.provider || "미상")}
+        </p>
+      </div>
+
+      <div class="place-result-actions">
+        ${place.map_url
+          ? `
+            <a
+              class="button secondary"
+              href="${escapeHtml(place.map_url)}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              지도 보기
+            </a>
+          `
+          : ""
+        }
+
+        <button
+          type="button"
+          class="choose-place-btn"
+          data-place="${encodeURIComponent(JSON.stringify(place))}"
+        >
+          이 장소 선택
+        </button>
+      </div>
+    </article>
+  `).join("");
+
+  resultsEl.querySelectorAll(".choose-place-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      const place = JSON.parse(decodeURIComponent(button.dataset.place || "{}"));
+      applyItemPlaceSelection(place);
+    });
+  });
+}
+
+async function searchItemPlaces(scope, query) {
+  const errorEl = document.getElementById("item-place-search-error");
+  const loadingEl = document.getElementById("item-place-search-loading");
+  const resultsEl = document.getElementById("item-place-search-results");
+  const submitBtn = document.getElementById("item-place-search-submit-btn");
+
+  errorEl.textContent = "";
+  resultsEl.innerHTML = "";
+  loadingEl.style.display = "block";
+  submitBtn.disabled = true;
+  submitBtn.textContent = "검색 중...";
+
+  try {
+    const url =
+      `/api/trips/${TRIP_ID}/places/search?` +
+      new URLSearchParams({
+        scope,
+        q: query,
+      });
+
+    const res = await apiFetch(url);
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      errorEl.textContent = data.detail || "장소 검색에 실패했습니다.";
+      return;
+    }
+
+    renderItemPlaceSearchResults(data.results);
+  } catch (error) {
+    console.error("일정 폼 장소 검색 오류", error);
+    errorEl.textContent = "장소 검색 중 네트워크 오류가 발생했습니다.";
+  } finally {
+    loadingEl.style.display = "none";
+    submitBtn.disabled = false;
+    submitBtn.textContent = "검색";
+  }
+}
+
 function setExternalBookingPanelVisibility(canEdit) {
   const imagePanel = document.getElementById("reservation-image-panel");
   const panel = document.getElementById("external-booking-panel");
@@ -899,47 +1275,38 @@ function setAiItineraryPanelVisibility(canEdit) {
     const routeLoadingEl = document.getElementById("ai-itinerary-route-loading");
     const routeErrorEl = document.getElementById("ai-itinerary-route-error");
     const routeBtn = document.getElementById("ai-itinerary-route-btn");
-    const mapGlobalStatusEl = document.getElementById("ai-itinerary-map-global-status");
-    const mapPanelEl = document.getElementById("ai-itinerary-map-panel");
-    const mapStatusEl = document.getElementById("ai-itinerary-map-status");
-    const mapDateEl = document.getElementById("ai-itinerary-map-date");
     const resultEl = document.getElementById("ai-itinerary-result");
     errorEl.textContent = "";
     loadingEl.style.display = "none";
     routeLoadingEl.style.display = "none";
     routeErrorEl.textContent = "";
     routeBtn.style.display = "none";
-    mapGlobalStatusEl.style.display = "none";
-    mapGlobalStatusEl.textContent = "";
-    mapPanelEl.style.display = "none";
-    mapStatusEl.textContent = "";
-    mapDateEl.innerHTML = "";
     resultEl.style.display = "none";
     resultEl.innerHTML = "";
-    clearAiItineraryMapState();
+    refreshTravelMap();
   }
 }
 
-function clearAiItineraryMapMarkers() {
-  if (!Array.isArray(aiItineraryMapMarkers)) {
-    aiItineraryMapMarkers = [];
+function clearTravelMapMarkers() {
+  if (!Array.isArray(travelMapMarkers)) {
+    travelMapMarkers = [];
     return;
   }
 
-  for (const marker of aiItineraryMapMarkers) {
+  for (const marker of travelMapMarkers) {
     if (marker && typeof marker.setMap === "function") {
       marker.setMap(null);
     }
   }
 
-  aiItineraryMapMarkers = [];
+  travelMapMarkers = [];
 }
 
-function clearAiItineraryMapState() {
-  clearAiItineraryMapMarkers();
+function clearTravelMapState() {
+  clearTravelMapMarkers();
 
-  if (aiItineraryMapInfoWindow && typeof aiItineraryMapInfoWindow.close === "function") {
-    aiItineraryMapInfoWindow.close();
+  if (travelMapInfoWindow && typeof travelMapInfoWindow.close === "function") {
+    travelMapInfoWindow.close();
   }
 }
 
@@ -1003,65 +1370,33 @@ function getSavedCandidateFilterGroup(candidate) {
   return "other";
 }
 
-function clearSavedCandidatesMapMarkers() {
-  if (!Array.isArray(savedCandidatesMapMarkers)) {
-    savedCandidatesMapMarkers = [];
+function setTravelMapStatus(message) {
+  const statusEl = document.getElementById("travel-map-status");
+  if (!statusEl) {
     return;
   }
-
-  for (const marker of savedCandidatesMapMarkers) {
-    if (marker && typeof marker.setMap === "function") {
-      marker.setMap(null);
-    }
-  }
-
-  savedCandidatesMapMarkers = [];
+  statusEl.textContent = message || "";
 }
 
-function clearSavedCandidatesMapState() {
-  clearSavedCandidatesMapMarkers();
-
-  if (savedCandidatesMapInfoWindow && typeof savedCandidatesMapInfoWindow.close === "function") {
-    savedCandidatesMapInfoWindow.close();
-  }
-}
-
-function setSavedCandidatesMapGlobalStatus(message) {
-  const globalStatusEl = document.getElementById("saved-candidates-map-global-status");
-
-  if (!globalStatusEl) {
+function ensureTravelMapInstance() {
+  if (travelMap || !travelMapReady || !window.google?.maps) {
     return;
   }
 
-  if (!message) {
-    globalStatusEl.textContent = "";
-    globalStatusEl.style.display = "none";
-    return;
-  }
-
-  globalStatusEl.textContent = message;
-  globalStatusEl.style.display = "block";
-}
-
-function ensureSavedCandidatesMapInstance() {
-  if (savedCandidatesMap || !aiItineraryMapReady || !window.google?.maps) {
-    return;
-  }
-
-  const mapEl = document.getElementById("saved-candidates-map");
+  const mapEl = document.getElementById("travel-map");
   if (!mapEl) {
     return;
   }
 
-  savedCandidatesMap = new google.maps.Map(mapEl, {
+  mapEl.style.display = "block";
+  travelMap = new google.maps.Map(mapEl, {
     center: { lat: 37.5665, lng: 126.9780 },
     zoom: 12,
     mapTypeControl: false,
     streetViewControl: false,
     fullscreenControl: false,
   });
-
-  savedCandidatesMapInfoWindow = new google.maps.InfoWindow();
+  travelMapInfoWindow = new google.maps.InfoWindow();
 }
 
 function buildSavedCandidateInfoWindowContent(candidate, canEdit) {
@@ -1110,162 +1445,27 @@ function buildSavedCandidateInfoWindowContent(candidate, canEdit) {
   };
 }
 
-function refreshSavedCandidatesMap() {
-  const panelEl = document.getElementById("saved-candidates-map-panel");
-  const statusEl = document.getElementById("saved-candidates-map-status");
-  const filterEl = document.getElementById("saved-candidates-map-filter");
+function buildItineraryInfoWindowContent(item) {
+  const title = escapeHtml(item.title || "제목 없음");
+  const locationName = item.location_name ? escapeHtml(item.location_name) : "장소 정보 없음";
+  const memo = item.memo ? escapeHtml(item.memo) : "";
+  const statusLabel = STATUS_LABELS[item.status] || item.status || "예정";
+  const startText = item.start_at ? escapeHtml(formatDateTime(item.start_at)) : "미정";
+  const endText = item.end_at ? escapeHtml(formatDateTime(item.end_at)) : "미정";
 
-  if (!panelEl || !statusEl || !filterEl) {
-    return;
-  }
-
-  if (!HAS_GOOGLE_MAPS_BROWSER_API_KEY) {
-    panelEl.style.display = "none";
-    statusEl.textContent = "";
-    clearSavedCandidatesMapState();
-    setSavedCandidatesMapGlobalStatus("저장한 장소 후보 지도는 현재 설정되어 있지 않습니다.");
-    return;
-  }
-
-  if (aiItineraryMapLoadFailed) {
-    panelEl.style.display = "none";
-    statusEl.textContent = "";
-    clearSavedCandidatesMapState();
-    setSavedCandidatesMapGlobalStatus("저장한 장소 후보 지도를 불러오지 못했습니다. API 설정을 확인하세요.");
-    return;
-  }
-
-  if (!aiItineraryMapReady || !window.google?.maps) {
-    panelEl.style.display = "none";
-    statusEl.textContent = "";
-    clearSavedCandidatesMapState();
-    setSavedCandidatesMapGlobalStatus("");
-    return;
-  }
-
-  setSavedCandidatesMapGlobalStatus("");
-
-  if (!Array.isArray(currentPlaceCandidates) || currentPlaceCandidates.length === 0) {
-    panelEl.style.display = "none";
-    statusEl.textContent = "";
-    clearSavedCandidatesMapState();
-    return;
-  }
-
-  ensureSavedCandidatesMapInstance();
-
-  const allValidCandidates = currentPlaceCandidates.filter((candidate) =>
-    Number.isFinite(candidate?.latitude) && Number.isFinite(candidate?.longitude),
-  );
-
-  if (allValidCandidates.length === 0) {
-    panelEl.style.display = "none";
-    statusEl.textContent = "";
-    clearSavedCandidatesMapState();
-    return;
-  }
-
-  panelEl.style.display = "block";
-
-  const selectedFilter = filterEl.value || "all";
-  const filteredCandidates = currentPlaceCandidates.filter((candidate) => {
-    if (selectedFilter === "all") {
-      return true;
-    }
-    return getSavedCandidateFilterGroup(candidate) === selectedFilter;
-  });
-
-  const validCandidates = filteredCandidates.filter((candidate) =>
-    Number.isFinite(candidate?.latitude) && Number.isFinite(candidate?.longitude),
-  );
-
-  clearSavedCandidatesMapMarkers();
-
-  if (validCandidates.length === 0) {
-    panelEl.style.display = "block";
-    statusEl.textContent = "선택한 필터에 표시할 좌표 장소가 없습니다.";
-    return;
-  }
-
-  panelEl.style.display = "block";
-  statusEl.textContent = "";
-
-  const canEdit = canEditPlaces();
-
-  for (const candidate of validCandidates) {
-    const marker = new google.maps.Marker({
-      position: {
-        lat: Number(candidate.latitude),
-        lng: Number(candidate.longitude),
-      },
-      map: savedCandidatesMap,
-      title: candidate.name || "장소 후보",
-    });
-
-    marker.addListener("click", () => {
-      if (!savedCandidatesMapInfoWindow) {
-        return;
-      }
-
-      const { content, addButtonId } = buildSavedCandidateInfoWindowContent(candidate, canEdit);
-      savedCandidatesMapInfoWindow.setContent(content);
-      savedCandidatesMapInfoWindow.open({ map: savedCandidatesMap, anchor: marker });
-
-      if (addButtonId) {
-        google.maps.event.addListenerOnce(savedCandidatesMapInfoWindow, "domready", () => {
-          const button = document.getElementById(addButtonId);
-          if (!button) {
-            return;
-          }
-
-          button.addEventListener("click", () => {
-            savedCandidatesMapInfoWindow.close();
-            openItineraryFormFromPlace(candidate);
-          });
-        });
-      }
-    });
-
-    savedCandidatesMapMarkers.push(marker);
-  }
-
-  if (validCandidates.length === 1) {
-    savedCandidatesMap.setCenter({
-      lat: Number(validCandidates[0].latitude),
-      lng: Number(validCandidates[0].longitude),
-    });
-    savedCandidatesMap.setZoom(14);
-    return;
-  }
-
-  const bounds = new google.maps.LatLngBounds();
-  for (const candidate of validCandidates) {
-    bounds.extend({
-      lat: Number(candidate.latitude),
-      lng: Number(candidate.longitude),
-    });
-  }
-  savedCandidatesMap.fitBounds(bounds, 48);
+  return `
+    <div style="max-width: 280px; line-height: 1.45;">
+      <p style="margin: 0 0 0.35rem;"><strong>${title}</strong></p>
+      <p style="margin: 0 0 0.25rem;">상태: ${escapeHtml(statusLabel)}</p>
+      <p style="margin: 0 0 0.25rem;">시작: ${startText}</p>
+      <p style="margin: 0 0 0.25rem;">종료: ${endText}</p>
+      <p style="margin: 0 0 0.25rem;">장소: ${locationName}</p>
+      ${memo ? `<p style="margin: 0;">메모: ${memo}</p>` : ""}
+    </div>
+  `;
 }
 
-function setAiItineraryMapGlobalStatus(message) {
-  const mapGlobalStatusEl = document.getElementById("ai-itinerary-map-global-status");
-
-  if (!mapGlobalStatusEl) {
-    return;
-  }
-
-  if (!message) {
-    mapGlobalStatusEl.textContent = "";
-    mapGlobalStatusEl.style.display = "none";
-    return;
-  }
-
-  mapGlobalStatusEl.textContent = message;
-  mapGlobalStatusEl.style.display = "block";
-}
-
-function buildAiItineraryMapInfoWindowContent(place, index) {
+function buildAiDraftInfoWindowContent(place) {
   const name = escapeHtml(place.name || "이름 없음");
   const address = place.address ? escapeHtml(place.address) : "주소 정보 없음";
   const reason = place.reason ? escapeHtml(place.reason) : "추천 이유 없음";
@@ -1286,7 +1486,7 @@ function buildAiItineraryMapInfoWindowContent(place, index) {
 
   return `
     <div style="max-width: 260px; line-height: 1.45;">
-      <p style="margin: 0 0 0.35rem;"><strong>${index + 1}. ${name}</strong></p>
+      <p style="margin: 0 0 0.35rem;"><strong>${name}</strong></p>
       <p style="margin: 0 0 0.25rem;">주소: ${address}</p>
       <p style="margin: 0 0 0.25rem;">추천 이유: ${reason}</p>
       <p style="margin: 0 0 0.35rem;">권장 체류: ${stay}</p>
@@ -1295,200 +1495,314 @@ function buildAiItineraryMapInfoWindowContent(place, index) {
   `;
 }
 
-function getValidAiItineraryMapPlaces(dateValue) {
-  if (!currentAiItineraryDraft || !Array.isArray(currentAiItineraryDraft.days)) {
-    return [];
-  }
+function updateTravelMapControlsVisibility() {
+  const itineraryControl = document.getElementById("travel-map-control-itineraries");
+  const candidateControl = document.getElementById("travel-map-control-candidates");
+  const aiControl = document.getElementById("travel-map-control-ai");
 
-  const selectedDay = currentAiItineraryDraft.days.find((day) => day.date === dateValue);
-
-  if (!selectedDay || !Array.isArray(selectedDay.items)) {
-    return [];
-  }
-
-  return selectedDay.items.filter((item) =>
-    item && Number.isFinite(item.latitude) && Number.isFinite(item.longitude),
-  );
-}
-
-function ensureAiItineraryMapInstance() {
-  if (aiItineraryMap || !aiItineraryMapReady || !window.google?.maps) {
+  if (!itineraryControl || !candidateControl || !aiControl) {
     return;
   }
 
-  const mapEl = document.getElementById("ai-itinerary-map");
+  itineraryControl.style.display = activeTravelMapTab === "itineraries" ? "inline-flex" : "none";
+  candidateControl.style.display = activeTravelMapTab === "candidates" ? "inline-flex" : "none";
+  aiControl.style.display = activeTravelMapTab === "ai" ? "inline-flex" : "none";
+}
+
+function updateTravelMapTabButtons() {
+  const tabIds = ["itineraries", "candidates", "ai"];
+  for (const tabId of tabIds) {
+    const button = document.getElementById(`travel-map-tab-${tabId}`);
+    if (!button) {
+      continue;
+    }
+    button.classList.toggle("is-active", activeTravelMapTab === tabId);
+  }
+}
+
+function buildTripDateOptions() {
+  if (!currentTrip?.start_date || !currentTrip?.end_date) {
+    return [];
+  }
+
+  const result = [];
+  const cursor = new Date(`${currentTrip.start_date}T00:00:00`);
+  const end = new Date(`${currentTrip.end_date}T00:00:00`);
+
+  while (cursor <= end) {
+    const year = cursor.getFullYear();
+    const month = String(cursor.getMonth() + 1).padStart(2, "0");
+    const day = String(cursor.getDate()).padStart(2, "0");
+    result.push(`${year}-${month}-${day}`);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return result;
+}
+
+function updateTravelMapItineraryDateOptions() {
+  const selectEl = document.getElementById("travel-map-itinerary-date");
+  if (!selectEl) {
+    return;
+  }
+
+  const previousValue = selectEl.value;
+  const tripDates = buildTripDateOptions();
+
+  selectEl.innerHTML = [
+    `<option value="all">전체 일정</option>`,
+    ...tripDates.map((dateValue) => `<option value="${escapeHtml(dateValue)}">${escapeHtml(dateValue)}</option>`),
+  ].join("");
+
+  const itineraryDates = currentItineraries
+    .map((item) => (item.start_at ? String(item.start_at).slice(0, 10) : null))
+    .filter((value) => Boolean(value));
+
+  const earliestItineraryDate = itineraryDates.length > 0
+    ? [...itineraryDates].sort()[0]
+    : (currentTrip?.start_date || "all");
+
+  if (previousValue && Array.from(selectEl.options).some((option) => option.value === previousValue)) {
+    selectEl.value = previousValue;
+    return;
+  }
+
+  if (earliestItineraryDate && Array.from(selectEl.options).some((option) => option.value === earliestItineraryDate)) {
+    selectEl.value = earliestItineraryDate;
+    return;
+  }
+
+  selectEl.value = "all";
+}
+
+function updateTravelMapAiDateOptions() {
+  const selectEl = document.getElementById("ai-itinerary-map-date");
+  if (!selectEl) {
+    return;
+  }
+
+  const previousValue = selectEl.value;
+  const dayDates = (currentAiItineraryDraft?.days || [])
+    .map((day) => day?.date)
+    .filter((value) => typeof value === "string" && value.length > 0);
+
+  selectEl.innerHTML = dayDates.map((dateValue) => `<option value="${escapeHtml(dateValue)}">${escapeHtml(dateValue)}</option>`).join("");
+
+  if (previousValue && dayDates.includes(previousValue)) {
+    selectEl.value = previousValue;
+  } else if (dayDates.length > 0) {
+    selectEl.value = dayDates[0];
+  }
+}
+
+function setTravelMapTab(tabName) {
+  activeTravelMapTab = tabName;
+  updateTravelMapTabButtons();
+  updateTravelMapControlsVisibility();
+  refreshTravelMap();
+}
+
+function refreshTravelMap() {
+  const mapEl = document.getElementById("travel-map");
   if (!mapEl) {
     return;
   }
 
-  aiItineraryMap = new google.maps.Map(mapEl, {
-    center: { lat: 37.5665, lng: 126.9780 },
-    zoom: 12,
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: false,
-  });
-
-  aiItineraryMapInfoWindow = new google.maps.InfoWindow();
-}
-
-function renderAiItineraryMapForSelectedDate() {
-  const mapPanelEl = document.getElementById("ai-itinerary-map-panel");
-  const mapStatusEl = document.getElementById("ai-itinerary-map-status");
-  const mapDateEl = document.getElementById("ai-itinerary-map-date");
-
-  if (!mapPanelEl || !mapStatusEl || !mapDateEl) {
+  if (!HAS_GOOGLE_MAPS_BROWSER_API_KEY) {
+    mapEl.style.display = "none";
+    clearTravelMapState();
+    setTravelMapStatus("지도 표시는 현재 설정되어 있지 않습니다.");
     return;
   }
 
-  if (!aiItineraryMapReady || !aiItineraryMap || !window.google?.maps) {
-    mapPanelEl.style.display = "none";
-    clearAiItineraryMapState();
+  if (travelMapLoadFailed) {
+    mapEl.style.display = "none";
+    clearTravelMapState();
+    setTravelMapStatus("지도를 불러오지 못했습니다. API 설정을 확인하세요.");
     return;
   }
 
-  const selectedDate = mapDateEl.value;
-  const places = getValidAiItineraryMapPlaces(selectedDate);
-
-  clearAiItineraryMapMarkers();
-  mapPanelEl.style.display = "block";
-
-  if (places.length === 0) {
-    mapStatusEl.textContent = "선택한 날짜에 유효한 좌표 장소가 없습니다.";
+  if (!travelMapReady || !window.google?.maps) {
+    mapEl.style.display = "none";
+    clearTravelMapState();
+    setTravelMapStatus("");
     return;
   }
 
-  mapStatusEl.textContent = "";
+  mapEl.style.display = "block";
+  ensureTravelMapInstance();
+  if (!travelMap) {
+    return;
+  }
 
-  for (let index = 0; index < places.length; index += 1) {
-    const place = places[index];
+  updateTravelMapControlsVisibility();
+  clearTravelMapMarkers();
+
+  if (activeTravelMapTab === "ai") {
+    if (!currentAiItineraryDraft || !Array.isArray(currentAiItineraryDraft.days) || currentAiItineraryDraft.days.length === 0) {
+      setTravelMapStatus("먼저 AI 코스를 생성하세요.");
+      return;
+    }
+  }
+
+  let points = [];
+
+  if (activeTravelMapTab === "itineraries") {
+    const selectedDate = document.getElementById("travel-map-itinerary-date")?.value || "all";
+    points = currentItineraries
+      .filter((item) => Number.isFinite(item?.latitude) && Number.isFinite(item?.longitude))
+      .filter((item) => {
+        if (selectedDate === "all") {
+          return true;
+        }
+        if (!item.start_at) {
+          return false;
+        }
+        return String(item.start_at).slice(0, 10) === selectedDate;
+      })
+      .map((item) => ({
+        latitude: Number(item.latitude),
+        longitude: Number(item.longitude),
+        title: item.title || "일정",
+        content: buildItineraryInfoWindowContent(item),
+      }));
+
+    if (points.length === 0) {
+      setTravelMapStatus("선택한 일정 날짜에 표시할 좌표 장소가 없습니다.");
+      return;
+    }
+  }
+
+  if (activeTravelMapTab === "candidates") {
+    const selectedFilter = document.getElementById("saved-candidates-map-filter")?.value || "all";
+    const filteredCandidates = currentPlaceCandidates
+      .filter((candidate) => {
+        if (selectedFilter === "all") {
+          return true;
+        }
+        return getSavedCandidateFilterGroup(candidate) === selectedFilter;
+      })
+      .filter((candidate) => Number.isFinite(candidate?.latitude) && Number.isFinite(candidate?.longitude));
+
+    const canEdit = canEditPlaces();
+    points = filteredCandidates.map((candidate) => ({
+      latitude: Number(candidate.latitude),
+      longitude: Number(candidate.longitude),
+      title: candidate.name || "장소 후보",
+      infoFactory: () => buildSavedCandidateInfoWindowContent(candidate, canEdit),
+      place: candidate,
+    }));
+
+    if (points.length === 0) {
+      setTravelMapStatus("선택한 필터에 표시할 좌표 장소가 없습니다.");
+      return;
+    }
+  }
+
+  if (activeTravelMapTab === "ai") {
+    const selectedDate = document.getElementById("ai-itinerary-map-date")?.value;
+    const selectedDay = (currentAiItineraryDraft?.days || []).find((day) => day.date === selectedDate);
+    const dayItems = Array.isArray(selectedDay?.items) ? selectedDay.items : [];
+    points = dayItems
+      .filter((item) => Number.isFinite(item?.latitude) && Number.isFinite(item?.longitude))
+      .map((item) => ({
+        latitude: Number(item.latitude),
+        longitude: Number(item.longitude),
+        title: item.name || "AI 추천 장소",
+        content: buildAiDraftInfoWindowContent(item),
+      }));
+
+    if (points.length === 0) {
+      setTravelMapStatus("선택한 날짜에 표시할 좌표 장소가 없습니다.");
+      return;
+    }
+  }
+
+  setTravelMapStatus("");
+
+  for (const point of points) {
     const marker = new google.maps.Marker({
-      position: { lat: Number(place.latitude), lng: Number(place.longitude) },
-      map: aiItineraryMap,
-      label: `${index + 1}`,
-      title: place.name || `장소 ${index + 1}`,
+      position: {
+        lat: Number(point.latitude),
+        lng: Number(point.longitude),
+      },
+      map: travelMap,
+      title: point.title,
     });
 
     marker.addListener("click", () => {
-      if (!aiItineraryMapInfoWindow) {
+      if (!travelMapInfoWindow) {
         return;
       }
-      aiItineraryMapInfoWindow.setContent(buildAiItineraryMapInfoWindowContent(place, index));
-      aiItineraryMapInfoWindow.open({ map: aiItineraryMap, anchor: marker });
+
+      if (typeof point.infoFactory === "function") {
+        const { content, addButtonId } = point.infoFactory();
+        travelMapInfoWindow.setContent(content);
+        travelMapInfoWindow.open({ map: travelMap, anchor: marker });
+
+        if (addButtonId) {
+          google.maps.event.addListenerOnce(travelMapInfoWindow, "domready", () => {
+            const button = document.getElementById(addButtonId);
+            if (!button) {
+              return;
+            }
+
+            button.addEventListener("click", () => {
+              travelMapInfoWindow.close();
+              openItineraryFormFromPlace(point.place);
+            });
+          });
+        }
+
+        return;
+      }
+
+      travelMapInfoWindow.setContent(point.content || "");
+      travelMapInfoWindow.open({ map: travelMap, anchor: marker });
     });
 
-    aiItineraryMapMarkers.push(marker);
+    travelMapMarkers.push(marker);
   }
 
-  if (places.length === 1) {
-    aiItineraryMap.setCenter({ lat: Number(places[0].latitude), lng: Number(places[0].longitude) });
-    aiItineraryMap.setZoom(14);
+  if (points.length === 1) {
+    travelMap.setCenter({
+      lat: Number(points[0].latitude),
+      lng: Number(points[0].longitude),
+    });
+    travelMap.setZoom(14);
     return;
   }
 
   const bounds = new google.maps.LatLngBounds();
-  for (const place of places) {
-    bounds.extend({ lat: Number(place.latitude), lng: Number(place.longitude) });
+  for (const point of points) {
+    bounds.extend({
+      lat: Number(point.latitude),
+      lng: Number(point.longitude),
+    });
   }
-  aiItineraryMap.fitBounds(bounds, 48);
+  travelMap.fitBounds(bounds, 48);
+}
+
+function refreshSavedCandidatesMap() {
+  refreshTravelMap();
 }
 
 function refreshAiItineraryMap() {
-  const mapPanelEl = document.getElementById("ai-itinerary-map-panel");
-  const mapDateEl = document.getElementById("ai-itinerary-map-date");
-  const mapStatusEl = document.getElementById("ai-itinerary-map-status");
-
-  if (!mapPanelEl || !mapDateEl || !mapStatusEl) {
-    return;
-  }
-
-  if (currentRole !== "owner" && currentRole !== "editor") {
-    setAiItineraryMapGlobalStatus("");
-    mapPanelEl.style.display = "none";
-    mapDateEl.innerHTML = "";
-    mapStatusEl.textContent = "";
-    clearAiItineraryMapState();
-    return;
-  }
-
-  if (!currentAiItineraryDraft || !Array.isArray(currentAiItineraryDraft.days) || currentAiItineraryDraft.days.length === 0) {
-    setAiItineraryMapGlobalStatus("");
-    mapPanelEl.style.display = "none";
-    mapDateEl.innerHTML = "";
-    mapStatusEl.textContent = "";
-    clearAiItineraryMapState();
-    return;
-  }
-
-  if (!HAS_GOOGLE_MAPS_BROWSER_API_KEY) {
-    mapPanelEl.style.display = "none";
-    mapDateEl.innerHTML = "";
-    mapStatusEl.textContent = "";
-    clearAiItineraryMapState();
-    setAiItineraryMapGlobalStatus("지도 표시는 현재 설정되어 있지 않습니다.");
-    return;
-  }
-
-  if (aiItineraryMapLoadFailed) {
-    mapPanelEl.style.display = "none";
-    mapDateEl.innerHTML = "";
-    mapStatusEl.textContent = "";
-    clearAiItineraryMapState();
-    setAiItineraryMapGlobalStatus("지도를 불러오지 못했습니다. API 설정을 확인하세요.");
-    return;
-  }
-
-  if (!aiItineraryMapReady || !window.google?.maps) {
-    mapPanelEl.style.display = "none";
-    mapDateEl.innerHTML = "";
-    mapStatusEl.textContent = "";
-    clearAiItineraryMapState();
-    setAiItineraryMapGlobalStatus("지도 표시는 현재 설정되어 있지 않습니다.");
-    return;
-  }
-
-  setAiItineraryMapGlobalStatus("");
-  ensureAiItineraryMapInstance();
-
-  const dayDates = currentAiItineraryDraft.days
-    .map((day) => day?.date)
-    .filter((dateValue) => typeof dateValue === "string" && dateValue.length > 0);
-
-  const selectedBeforeRefresh = mapDateEl.value;
-  mapDateEl.innerHTML = dayDates
-    .map((dateValue) => `<option value="${escapeHtml(dateValue)}">${escapeHtml(dateValue)}</option>`)
-    .join("");
-
-  if (dayDates.length === 0) {
-    mapPanelEl.style.display = "none";
-    mapStatusEl.textContent = "표시할 날짜가 없습니다.";
-    clearAiItineraryMapState();
-    return;
-  }
-
-  if (selectedBeforeRefresh && dayDates.includes(selectedBeforeRefresh)) {
-    mapDateEl.value = selectedBeforeRefresh;
-  } else {
-    mapDateEl.value = dayDates[0];
-  }
-
-  renderAiItineraryMapForSelectedDate();
+  updateTravelMapAiDateOptions();
+  refreshTravelMap();
 }
 
 window.initAiItineraryMap = function initAiItineraryMap() {
-  aiItineraryMapLoadFailed = false;
-  aiItineraryMapReady = Boolean(window.google?.maps);
-  if (currentAiItineraryDraft) {
-    refreshAiItineraryMap();
-  }
+  travelMapLoadFailed = false;
+  travelMapReady = Boolean(window.google?.maps);
+  refreshAiItineraryMap();
   refreshSavedCandidatesMap();
 };
 
 window.handleAiItineraryMapLoadError = function handleAiItineraryMapLoadError() {
-  aiItineraryMapLoadFailed = true;
-  aiItineraryMapReady = false;
-  refreshAiItineraryMap();
-  refreshSavedCandidatesMap();
+  travelMapLoadFailed = true;
+  travelMapReady = false;
+  refreshTravelMap();
 };
 
 function buildAiItineraryLegKey(date, fromExternalPlaceId, toExternalPlaceId) {
@@ -2382,10 +2696,13 @@ function renderItineraries(items) {
   const listEl = document.getElementById("itinerary-list");
   const emptyEl = document.getElementById("itinerary-empty");
   const canEdit = currentRole === "owner" || currentRole === "editor";
+  currentItineraries = Array.isArray(items) ? items : [];
+  updateTravelMapItineraryDateOptions();
 
   if (items.length === 0) {
     listEl.innerHTML = "";
     emptyEl.style.display = "block";
+    refreshTravelMap();
     return;
   }
 
@@ -2470,6 +2787,8 @@ function renderItineraries(items) {
       deleteItem(Number(button.dataset.id));
     });
   });
+
+  refreshTravelMap();
 }
 
 function openItineraryFormFromPlace(place) {
@@ -2494,12 +2813,33 @@ function openItineraryFormFromPlace(place) {
   form.category.value = getItineraryCategoryForPlace(place);
   form.location_name.value = place.name || "";
   form.memo.value = memoParts.join("\n\n");
+  form.place_candidate_id.value = Number.isInteger(Number(place.id)) ? String(place.id) : "";
+  form.place_provider.value = place.provider || "";
+  form.external_place_id.value = place.external_place_id || "";
+  const latitudeValue = Number(place.latitude);
+  const longitudeValue = Number(place.longitude);
+  const hasValidCoordinates = Number.isFinite(latitudeValue) && Number.isFinite(longitudeValue);
+
+  form.latitude.value = hasValidCoordinates ? String(latitudeValue) : "";
+  form.longitude.value = hasValidCoordinates ? String(longitudeValue) : "";
+
+  if (hasValidCoordinates) {
+    setItemPlaceSearchStatus("장소가 선택되었습니다. 저장하면 일정 지도에 표시됩니다.");
+  } else {
+    setItemPlaceSearchStatus("선택한 장소에 지도 좌표가 없어 일정 지도에는 표시되지 않습니다.", "warning");
+  }
+
+  hideItemPlaceSearchPanel({ keepStatus: true });
 }
 
 function openItemForm(item) {
   const panel = document.getElementById("item-form-panel");
   const form = document.getElementById("item-form");
 
+  closeToolsDrawer();
+  hideTripEditForm();
+  clearItemPlaceSearchStatus();
+  hideItemPlaceSearchPanel();
   document.getElementById("item-form-error").textContent = "";
   document.getElementById("conflict-banner").style.display = "none";
 
@@ -2529,12 +2869,78 @@ function openItemForm(item) {
 
   form.location_name.value = item ? (item.location_name || "") : "";
   form.memo.value = item ? (item.memo || "") : "";
+  form.place_candidate_id.value = item && item.place_candidate_id ? String(item.place_candidate_id) : "";
+  form.place_provider.value = item && item.place_provider ? item.place_provider : "";
+  form.external_place_id.value = item && item.external_place_id ? item.external_place_id : "";
+  const itemLatitudeValue = Number(item?.latitude);
+  const itemLongitudeValue = Number(item?.longitude);
+  const itemHasValidCoordinates = Number.isFinite(itemLatitudeValue) && Number.isFinite(itemLongitudeValue);
+
+  form.latitude.value = itemHasValidCoordinates ? String(itemLatitudeValue) : "";
+  form.longitude.value = itemHasValidCoordinates ? String(itemLongitudeValue) : "";
+
+  if (!item) {
+    resetItemPlaceSearchState();
+  }
 
   panel.scrollIntoView({ behavior: "smooth" });
 }
 
 function closeItemForm() {
-  document.getElementById("item-form-panel").style.display = "none";
+  hideItemForm();
+  closeToolsDrawer();
+}
+
+function setMobileMainTab(tabName) {
+  const schedulePanel = document.getElementById("trip-schedule-panel");
+  const mapPanel = document.getElementById("trip-map-panel");
+  const scheduleBtn = document.getElementById("trip-mobile-tab-schedule");
+  const mapBtn = document.getElementById("trip-mobile-tab-map");
+
+  if (!schedulePanel || !mapPanel || !scheduleBtn || !mapBtn) {
+    return;
+  }
+
+  const isSchedule = tabName === "schedule";
+  schedulePanel.classList.toggle("is-active", isSchedule);
+  mapPanel.classList.toggle("is-active", !isSchedule);
+  scheduleBtn.classList.toggle("is-active", isSchedule);
+  mapBtn.classList.toggle("is-active", !isSchedule);
+
+  if (!isSchedule && travelMap && window.google?.maps) {
+    google.maps.event.trigger(travelMap, "resize");
+    refreshTravelMap();
+  }
+}
+
+function openToolsDrawer() {
+  const drawer = document.getElementById("trip-tools-drawer");
+  const backdrop = document.getElementById("trip-tools-backdrop");
+  if (!drawer || !backdrop) {
+    return;
+  }
+
+  drawer.classList.add("is-open");
+  drawer.setAttribute("aria-hidden", "false");
+  backdrop.hidden = false;
+  backdrop.classList.add("is-open");
+  document.body.classList.add("tools-drawer-open");
+}
+
+function closeToolsDrawer() {
+  const drawer = document.getElementById("trip-tools-drawer");
+  const backdrop = document.getElementById("trip-tools-backdrop");
+
+  if (!drawer || !backdrop) {
+    document.body.classList.remove("tools-drawer-open");
+    return;
+  }
+
+  drawer.classList.remove("is-open");
+  drawer.setAttribute("aria-hidden", "true");
+  backdrop.classList.remove("is-open");
+  backdrop.hidden = true;
+  document.body.classList.remove("tools-drawer-open");
 }
 
 async function deleteItem(itemId) {
@@ -2550,6 +2956,18 @@ async function deleteItem(itemId) {
 
 document.getElementById("item-form-cancel").addEventListener("click", closeItemForm);
 document.getElementById("trip-edit-cancel").addEventListener("click", closeTripEditForm);
+document.getElementById("item-place-search-toggle-btn").addEventListener("click", toggleItemPlaceSearchPanel);
+document.getElementById("item-place-search-submit-btn").addEventListener("click", async () => {
+  const scope = document.getElementById("item-place-search-scope").value;
+  const query = document.getElementById("item-place-search-query").value.trim();
+
+  if (query.length < 2) {
+    document.getElementById("item-place-search-error").textContent = "장소 검색어는 2글자 이상 입력하세요.";
+    return;
+  }
+
+  await searchItemPlaces(scope, query);
+});
 const tripEditStartDateInput = document.getElementById("trip-edit-start-date");
 const tripEditEndDateInput = document.getElementById("trip-edit-end-date");
 const itemStartAtInput = document.getElementById("item-start-at");
@@ -2589,14 +3007,44 @@ document.getElementById("item-form").addEventListener("submit", async (e) => {
   const errorEl = document.getElementById("item-form-error");
   errorEl.textContent = "";
   const itemId = form.item_id.value;
+  const latitudeRaw = (form.latitude.value || "").trim();
+  const longitudeRaw = (form.longitude.value || "").trim();
+  const toNull = (value) => {
+    const normalized = String(value || "").trim();
+    return normalized ? normalized : null;
+  };
+
+  let latitudeValue = null;
+  let longitudeValue = null;
+
+  if (latitudeRaw || longitudeRaw) {
+    if (!latitudeRaw || !longitudeRaw) {
+      errorEl.textContent = "위도와 경도는 함께 입력되어야 합니다.";
+      return;
+    }
+
+    latitudeValue = Number(latitudeRaw);
+    longitudeValue = Number(longitudeRaw);
+
+    if (!Number.isFinite(latitudeValue) || !Number.isFinite(longitudeValue)) {
+      errorEl.textContent = "위도/경도 값이 올바르지 않습니다.";
+      return;
+    }
+  }
+
   const payload = {
     title: form.title.value,
     category: form.category.value,
     start_at: fromDatetimeLocalValue(form.start_at.value),
     end_at: fromDatetimeLocalValue(form.end_at.value),
-    location_name: form.location_name.value || null,
-    memo: form.memo.value || null,
-    status: form.status.value || null,
+    location_name: toNull(form.location_name.value),
+    memo: toNull(form.memo.value),
+    status: toNull(form.status.value),
+    place_candidate_id: form.place_candidate_id.value ? Number(form.place_candidate_id.value) : null,
+    place_provider: toNull(form.place_provider.value),
+    external_place_id: toNull(form.external_place_id.value),
+    latitude: latitudeValue,
+    longitude: longitudeValue,
   };
 if (payload.start_at && payload.end_at && payload.end_at <= payload.start_at) {
   errorEl.textContent = "종료 시각은 시작 시각보다 늦어야 합니다.";
@@ -2697,10 +3145,47 @@ const aiItineraryRouteLoadingEl = document.getElementById("ai-itinerary-route-lo
 const aiItineraryRouteErrorEl = document.getElementById("ai-itinerary-route-error");
 const aiItineraryMapDateSelect = document.getElementById("ai-itinerary-map-date");
 const savedCandidatesMapFilter = document.getElementById("saved-candidates-map-filter");
+const travelMapItineraryDateSelect = document.getElementById("travel-map-itinerary-date");
+
+document.getElementById("open-tools-btn")?.addEventListener("click", openToolsDrawer);
+document.getElementById("close-tools-btn")?.addEventListener("click", closeToolsDrawer);
+document.getElementById("trip-tools-backdrop")?.addEventListener("click", closeToolsDrawer);
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeToolsDrawer();
+  }
+});
+
+document.getElementById("trip-mobile-tab-schedule")?.addEventListener("click", () => {
+  setMobileMainTab("schedule");
+});
+
+document.getElementById("trip-mobile-tab-map")?.addEventListener("click", () => {
+  setMobileMainTab("map");
+});
+
+document.getElementById("travel-map-tab-itineraries")?.addEventListener("click", () => {
+  setTravelMapTab("itineraries");
+});
+
+document.getElementById("travel-map-tab-candidates")?.addEventListener("click", () => {
+  setTravelMapTab("candidates");
+});
+
+document.getElementById("travel-map-tab-ai")?.addEventListener("click", () => {
+  setTravelMapTab("ai");
+});
+
+if (travelMapItineraryDateSelect) {
+  travelMapItineraryDateSelect.addEventListener("change", () => {
+    refreshTravelMap();
+  });
+}
 
 if (aiItineraryMapDateSelect) {
   aiItineraryMapDateSelect.addEventListener("change", () => {
-    renderAiItineraryMapForSelectedDate();
+    refreshTravelMap();
   });
 }
 
