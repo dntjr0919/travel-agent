@@ -22,6 +22,37 @@ def test_trip_detail_returns_200_for_authenticated_user(client):
     assert "text/html" in res.headers.get("content-type", "")
 
 
+def test_trip_list_page_preserves_list_and_create_links(client):
+    register_and_login(client, "pages-trip-list@example.com")
+
+    res = client.get("/trips")
+
+    assert res.status_code == 200
+    assert "내 여행" in res.text
+    assert "새 여행 만들기" in res.text
+    assert 'href="/trips/new"' in res.text
+    assert 'id="trip-list"' in res.text
+    assert 'id="trip-empty"' in res.text
+    assert 'href="/trips/${t.id}"' in res.text
+    assert 'owner: "Owner", editor: "Editor", viewer: "Viewer"' in res.text
+
+
+def test_trip_form_page_preserves_fields_and_error_region(client):
+    register_and_login(client, "pages-trip-form@example.com")
+
+    res = client.get("/trips/new")
+
+    assert res.status_code == 200
+    assert "새 여행 만들기" in res.text
+    assert 'id="trip-form"' in res.text
+    assert 'name="title"' in res.text
+    assert 'name="destination"' in res.text
+    assert 'id="trip-start-date" name="start_date" required' in res.text
+    assert 'id="trip-end-date" name="end_date" required' in res.text
+    assert 'name="timezone"' in res.text
+    assert 'id="trip-error"' in res.text
+
+
 def test_trip_detail_contains_unified_map_and_layout_markup(client):
     register_and_login(client, "pages-unified-map-markup@example.com")
     trip = create_trip(client)

@@ -1,12 +1,22 @@
 {% extends "base.html" %}
 {% block title %}내 여행 - Travel Planner{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>내 여행</h1>
-  <a class="button" href="/trips/new">+ 새 여행</a>
+<div class="trips-page">
+  <header class="page-header trips-page-header">
+    <div class="trips-page-intro">
+      <p class="trip-page-eyebrow">여행 플래너</p>
+      <h1>내 여행</h1>
+      <p class="trips-page-description">여행을 만들고 일정을 한곳에서 관리하세요.</p>
+    </div>
+    <a class="button trips-create-button" href="/trips/new">+ 새 여행 만들기</a>
+  </header>
+  <div id="trip-list" class="trip-list"></div>
+  <p id="trip-empty" class="empty-state trip-empty-state" style="display:none">
+    <strong>아직 만든 여행이 없어요</strong>
+    <span>새 여행을 만들어 여행 계획을 시작해 보세요.</span>
+    <a class="button trips-create-button trip-empty-action" href="/trips/new">새 여행 만들기</a>
+  </p>
 </div>
-<div id="trip-list" class="trip-list"></div>
-<p id="trip-empty" class="empty-state" style="display:none">아직 여행이 없습니다. 새 여행을 만들어 보세요.</p>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -23,10 +33,15 @@ requireLogin().then(async () => {
   const roleLabel = { owner: "Owner", editor: "Editor", viewer: "Viewer" };
   listEl.innerHTML = trips.map(t => `
     <a class="card trip-card" href="/trips/${t.id}">
-      <h2>${escapeHtml(t.title)}</h2>
-      <p class="muted">${escapeHtml(t.destination || "목적지 미정")}</p>
-      <p>${t.start_date} ~ ${t.end_date}</p>
-      <span class="badge role-${t.my_role}">${roleLabel[t.my_role] || t.my_role}</span>
+      <div class="trip-card-heading">
+        <h2>${escapeHtml(t.title)}</h2>
+        ${t.destination ? `<p class="muted trip-card-destination">${escapeHtml(t.destination)}</p>` : ""}
+      </div>
+      <div class="trip-card-meta">
+        <p class="trip-card-dates">${escapeHtml(t.start_date)} ~ ${escapeHtml(t.end_date)}</p>
+        <p class="trip-card-timezone">${escapeHtml(t.timezone)}</p>
+      </div>
+      ${t.my_role ? `<span class="badge role-${escapeHtml(t.my_role)}">${escapeHtml(roleLabel[t.my_role] || t.my_role)}</span>` : ""}
     </a>
   `).join("");
 });
