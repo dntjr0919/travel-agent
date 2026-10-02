@@ -126,6 +126,14 @@
       />
     </label>
 
+    <label>
+      분석 모델
+      <select id="reservation-image-model" name="model">
+        <option value="gemini_flash_lite" selected>빠르고 경제적인 분석</option>
+        <option value="gemini_flash">더 정교한 분석</option>
+      </select>
+    </label>
+
     <div class="muted small" style="background: var(--color-bg); padding: 0.75rem; border-radius: 6px; line-height: 1.5;">
       <strong>안내:</strong><br>
       - 예약번호, QR 코드, 바코드, 여권번호, 카드·결제 정보, 전화번호, 이메일, 실명은 가린 뒤 업로드하세요.<br>
@@ -259,6 +267,74 @@
 
   <p id="external-booking-error" class="error-text"></p>
 </section>
+
+<section id="ai-itinerary-panel" class="card" style="display:none">
+  <div class="section-header">
+    <div>
+      <h2>해외 AI 여행 코스 초안</h2>
+      <p class="muted small">
+        여행 스타일과 관심사를 바탕으로 Google Places 실제 후보 안에서만 날짜별 코스 초안을 구성합니다.
+      </p>
+    </div>
+  </div>
+
+  <form id="ai-itinerary-form" class="form">
+    <label>
+      여행 스타일/느낌
+      <textarea
+        id="ai-itinerary-style"
+        name="style"
+        rows="3"
+        maxlength="300"
+        placeholder="예: 미술관과 현지 빵집, 야경을 여유롭게 즐기고 싶어요."
+        required
+      ></textarea>
+    </label>
+
+    <fieldset>
+      <legend>관심사 (최대 6개)</legend>
+      <div class="form-grid-2">
+        <label><input type="checkbox" name="interests" value="culture" /> 문화</label>
+        <label><input type="checkbox" name="interests" value="cafe" /> 카페</label>
+        <label><input type="checkbox" name="interests" value="nature" /> 자연</label>
+        <label><input type="checkbox" name="interests" value="shopping" /> 쇼핑</label>
+        <label><input type="checkbox" name="interests" value="food" /> 음식</label>
+        <label><input type="checkbox" name="interests" value="night_view" /> 야경</label>
+      </div>
+    </fieldset>
+
+    <label>
+      이동 강도
+      <select id="ai-itinerary-pace" name="pace">
+        <option value="relaxed">여유롭게</option>
+        <option value="balanced" selected>균형 있게</option>
+        <option value="packed">빽빽하게</option>
+      </select>
+    </label>
+
+    <label>
+      분석 모델
+      <select id="ai-itinerary-model" name="model">
+        <option value="gemini_flash_lite" selected>빠르고 경제적인 분석</option>
+        <option value="gemini_flash">더 정교한 분석</option>
+      </select>
+    </label>
+
+    <div class="muted small" style="background: var(--color-bg); padding: 0.75rem; border-radius: 6px; line-height: 1.5;">
+      입력한 여행 스타일과 Google Places 후보 정보가 선택한 Gemini 모델 제공자 서버로 전송됩니다.<br>
+      AI 초안이므로 영업시간, 휴무일, 입장 조건은 원본 정보와 대조하세요.
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" id="ai-itinerary-submit-btn">AI 코스 만들기</button>
+    </div>
+  </form>
+
+  <p id="ai-itinerary-error" class="error-text"></p>
+  <div id="ai-itinerary-loading" class="muted small" style="display:none; margin-top: 0.5rem;">코스를 만드는 중...</div>
+  <div id="ai-itinerary-result" style="display:none; margin-top: 0.75rem;"></div>
+</section>
+
 <section id="place-candidate-panel" class="card">
   <div class="section-header">
     <div>
@@ -373,6 +449,7 @@ let presenceSocket = null;
 let presenceReconnectTimer = null;
 let itemEndAtManuallyEdited = false;
 let externalAccommodationCheckoutManuallyEdited = false;
+let aiItineraryDraftData = null;
 
 function toDatetimeLocalValue(iso) {
   if (!iso) return "";
@@ -676,6 +753,7 @@ if (canEdit) {
 }
 
   setExternalBookingPanelVisibility(canEdit);
+  setAiItineraryPanelVisibility(canEdit);
 }
 
 function openTripEditForm() {
@@ -763,6 +841,112 @@ function setExternalBookingPanelVisibility(canEdit) {
   if (panel) {
     panel.style.display = canEdit ? "block" : "none";
   }
+}
+
+function setAiItineraryPanelVisibility(canEdit) {
+  const panel = document.getElementById("ai-itinerary-panel");
+  if (!panel) {
+    return;
+  }
+
+  panel.style.display = canEdit ? "block" : "none";
+
+  if (!canEdit) {
+    const errorEl = document.getElementById("ai-itinerary-error");
+    const loadingEl = document.getElementById("ai-itinerary-loading");
+    const resultEl = document.getElementById("ai-itinerary-result");
+    errorEl.textContent = "";
+    loadingEl.style.display = "none";
+    resultEl.style.display = "none";
+    resultEl.innerHTML = "";
+  }
+}
+
+function getSelectedAiItineraryInterests() {
+  const checked = document.querySelectorAll('#ai-itinerary-form input[name="interests"]:checked');
+  return Array.from(checked).map((input) => input.value);
+}
+
+function renderAiItineraryDraft(result) {
+  const resultEl = document.getElementById("ai-itinerary-result");
+  if (!resultEl) {
+    return;
+  }
+
+  const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+  const days = Array.isArray(result.days) ? result.days : [];
+
+  resultEl.innerHTML = `
+    <div class="muted small" style="margin-bottom: 0.75rem;">
+      ${escapeHtml(result.destination || "")}
+      · ${escapeHtml(result.start_date || "")} ~ ${escapeHtml(result.end_date || "")}
+    </div>
+
+    ${warnings.length > 0
+      ? `
+        <div style="margin-bottom: 0.75rem; font-size: 0.85rem; color: #d97706;">
+          <strong>주의사항:</strong>
+          <ul>
+            ${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}
+          </ul>
+        </div>
+      `
+      : ""
+    }
+
+    <div class="item-list">
+      ${days.map((day) => `
+        <section class="date-group" style="margin-bottom: 1rem;">
+          <h3>${escapeHtml(day.date)}</h3>
+          ${Array.isArray(day.items) && day.items.length > 0
+            ? day.items.map((item) => `
+              <article class="item-card" style="margin-bottom: 0.75rem;">
+                <div class="item-main">
+                  <span class="badge">AI 추천</span>
+                  <strong>${escapeHtml(item.name || "")}</strong>
+                  ${item.address ? `<p class="muted">📍 ${escapeHtml(item.address)}</p>` : ""}
+                  ${item.category ? `<p class="muted small">카테고리: ${escapeHtml(item.category)}</p>` : ""}
+                  <p class="muted small">추천 이유: ${escapeHtml(item.reason || "")}</p>
+                  <p class="muted small">권장 체류: ${escapeHtml(String(item.suggested_stay_minutes || ""))}분</p>
+                  <div class="form-actions" style="margin-top: 0.5rem;">
+                    ${item.map_url
+                      ? `
+                        <a
+                          class="button secondary"
+                          href="${escapeHtml(item.map_url)}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          지도 보기
+                        </a>
+                      `
+                      : ""
+                    }
+                    <button
+                      type="button"
+                      class="ai-itinerary-save-btn"
+                      data-place="${encodeURIComponent(JSON.stringify(item))}"
+                    >
+                      후보에 저장
+                    </button>
+                  </div>
+                </div>
+              </article>
+            `).join("")
+            : `<p class="empty-state">이 날짜에 추천된 장소가 없습니다.</p>`}
+        </section>
+      `).join("")}
+    </div>
+  `;
+
+  resultEl.style.display = "block";
+
+  resultEl.querySelectorAll(".ai-itinerary-save-btn").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const place = JSON.parse(decodeURIComponent(button.dataset.place || ""));
+      await savePlaceCandidate(place, button);
+    });
+  });
 }
 
 function addOneDayToDatetimeLocal(value) {
@@ -1773,6 +1957,77 @@ document.getElementById("external-import-checkout-btn").addEventListener("click"
   importAccommodationDraftToItemForm("checkout");
 });
 
+const aiItineraryForm = document.getElementById("ai-itinerary-form");
+const aiItinerarySubmitBtn = document.getElementById("ai-itinerary-submit-btn");
+const aiItineraryErrorEl = document.getElementById("ai-itinerary-error");
+const aiItineraryLoadingEl = document.getElementById("ai-itinerary-loading");
+const aiItineraryResultEl = document.getElementById("ai-itinerary-result");
+
+if (aiItineraryForm) {
+  aiItineraryForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    aiItineraryErrorEl.textContent = "";
+    aiItineraryLoadingEl.style.display = "none";
+
+    const styleInput = document.getElementById("ai-itinerary-style");
+    const paceSelect = document.getElementById("ai-itinerary-pace");
+    const modelSelect = document.getElementById("ai-itinerary-model");
+
+    const style = (styleInput?.value || "").trim();
+    const interests = getSelectedAiItineraryInterests();
+    const pace = paceSelect?.value || "balanced";
+    const model = modelSelect?.value || "gemini_flash_lite";
+
+    if (style.length < 2 || style.length > 300) {
+      aiItineraryErrorEl.textContent = "여행 스타일은 2자 이상 300자 이하로 입력하세요.";
+      return;
+    }
+
+    if (interests.length > 6) {
+      aiItineraryErrorEl.textContent = "관심사는 최대 6개까지 선택할 수 있습니다.";
+      return;
+    }
+
+    const payload = {
+      style,
+      interests,
+      pace,
+      model,
+    };
+
+    const originalBtnText = aiItinerarySubmitBtn.textContent;
+    aiItinerarySubmitBtn.disabled = true;
+    aiItinerarySubmitBtn.textContent = "코스를 만드는 중...";
+    aiItineraryLoadingEl.style.display = "block";
+
+    try {
+      const res = await apiFetch(`/api/trips/${TRIP_ID}/ai-itinerary-drafts`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        aiItineraryErrorEl.textContent = data.detail || "AI 코스 생성에 실패했습니다.";
+        aiItineraryResultEl.style.display = "none";
+        aiItineraryResultEl.innerHTML = "";
+        return;
+      }
+
+      aiItineraryDraftData = data;
+      renderAiItineraryDraft(aiItineraryDraftData);
+    } catch (error) {
+      aiItineraryErrorEl.textContent = "AI 코스 생성 중 네트워크 오류가 발생했습니다.";
+    } finally {
+      aiItineraryLoadingEl.style.display = "none";
+      aiItinerarySubmitBtn.disabled = false;
+      aiItinerarySubmitBtn.textContent = originalBtnText;
+    }
+  });
+}
+
 const reservationImageFileInput = document.getElementById("reservation-image-file");
 const reservationImageFilenameEl = document.getElementById("reservation-image-filename");
 const reservationImageForm = document.getElementById("reservation-image-form");
@@ -1780,6 +2035,7 @@ const reservationImageSubmitBtn = document.getElementById("reservation-image-sub
 const reservationImageErrorEl = document.getElementById("reservation-image-error");
 const reservationImageSuccessEl = document.getElementById("reservation-image-success");
 const reservationImageWarningsEl = document.getElementById("reservation-image-warnings");
+const reservationImageModelSelect = document.getElementById("reservation-image-model");
 
 if (reservationImageFileInput) {
   reservationImageFileInput.addEventListener("change", () => {
@@ -1839,11 +2095,15 @@ if (reservationImageForm) {
 
     const bookingUrlInput = document.getElementById("reservation-image-booking-url");
     const bookingUrl = bookingUrlInput?.value.trim() || "";
+    const selectedModel = reservationImageModelSelect?.value || "";
 
     const formData = new FormData();
     formData.append("file", file);
     if (bookingUrl) {
       formData.append("booking_url", bookingUrl);
+    }
+    if (selectedModel) {
+      formData.append("model", selectedModel);
     }
 
     const originalBtnText = reservationImageSubmitBtn.textContent;

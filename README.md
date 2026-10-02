@@ -92,6 +92,19 @@
 - 요청 형식: `multipart/form-data`
   - `file`: `image/jpeg` 또는 `image/png` (최대 5MB)
   - `booking_url`: 선택 문자열
+  - `model`: 선택 문자열 (`gemini_flash_lite` 또는 `gemini_flash`)
+
+#### 분석 모델 선택 (MVP)
+
+- 클라이언트는 요청마다 분석 모델을 선택할 수 있습니다.
+- 서버는 클라이언트 입력값을 직접 모델명으로 사용하지 않고, 내부 허용 목록으로 실제 Gemini 모델명을 매핑합니다.
+- `model`이 없거나 빈 문자열이면 기본값 `gemini_flash_lite`를 사용합니다.
+- 허용되지 않은 `model` 값은 `422 RESERVATION_IMPORT_INVALID_MODEL`로 거절합니다.
+
+| 내부 선택값 | UI 이름 | 실제 Gemini 모델명 |
+|---|---|---|
+| `gemini_flash_lite` | 빠르고 경제적인 분석 | `gemini-3.5-flash-lite` |
+| `gemini_flash` | 더 정교한 분석 | `gemini-3.8-flash` |
 
 #### 개인정보 마스킹 안내 및 이미지 비저장 정책
 
@@ -129,6 +142,50 @@
 - URL 자체를 별도 테이블에 수집·저장하지 않음
 - 최종 저장 시점에만 사용자가 확인한 내용이 기존 일정 메모에 반영됨
 - 여권번호, 카드번호 등 민감정보는 메모에 입력하지 않도록 운영 정책으로 안내 필요
+
+### 해외 AI 여행 코스 초안 (3단계 MVP)
+
+- Owner/Editor가 여행 스타일, 관심사, 이동 강도, 모델을 입력하면 AI가 날짜별 코스 초안을 제안
+- **2단계 흐름 고정**: LLM이 먼저 검색 계획(질의)만 생성하고, 서버가 Google Places 실제 후보를 수집한 뒤, LLM이 후보 ID 안에서만 코스를 구성
+- 코스 초안의 각 항목은 실제 Google Places 결과의 `external_place_id`, 이름, 주소, 좌표, 카테고리, 지도 링크를 기반으로 구성
+- 초안은 DB에 자동 저장하지 않으며, 사용자가 각 항목의 **후보에 저장** 버튼을 누른 경우에만 기존 후보 보관함 API로 저장
+- Viewer는 AI 코스 패널과 생성 결과를 볼 수 없음
+
+#### API
+
+- 엔드포인트: `POST /api/trips/{trip_id}/ai-itinerary-drafts`
+- 권한: Owner, Editor
+- 요청 본문(JSON)
+  - `style`: trim 후 2~300자
+  - `interests`: 0~6개 (`culture`, `cafe`, `nature`, `shopping`, `food`, `night_view`)
+  - `pace`: `relaxed`, `balanced`, `packed`
+  - `model`: `gemini_flash_lite` 또는 `gemini_flash` (없거나 빈 문자열이면 `gemini_flash_lite`)
+- 응답(JSON)
+  - `destination`, `start_date`, `end_date`, `days`, `warnings`
+  - `days[*].items[*]`는 후보 저장에 필요한 장소 필드 + `reason`, `suggested_stay_minutes`
+
+#### 안전장치와 재검증
+
+- 검색 계획 단계: 1~4개 검색어만 허용하고 destination 포함 여부를 검증
+- 장소 수집 단계: 검색어별 상위 5개만 사용, 전체 20개 제한, `external_place_id` 기준 중복 제거
+- 코스 구성 단계: LLM 응답에서 후보 목록에 없는 ID 제거, 여행 기간 밖 날짜 제거, 하루 4개 제한, 동일 장소 중복 제거(일자 내/일자 간)
+- 체류 시간은 30~360분, 30분 단위만 허용
+- 유효 항목이 하나도 없으면 `AI_ITINERARY_INVALID_COURSE_RESPONSE` 반환
+- LLM 프롬프트/원문 응답/사용자 스타일 전문/Google Places 원문 응답은 로그에 남기지 않음
+
+#### 제외 범위
+
+- Google Maps 지도 임베드
+- Google Routes API, 이동 시간·거리 최적화
+- 경비 계산/가격 비교
+- 일정(ItineraryItem) 자동 저장
+- DB 스키마 변경, 작업 큐/Redis, 타 LLM SDK
+
+#### 개인정보와 전송 데이터 주의
+
+- AI 코스 생성 시 입력한 여행 스타일과 Google Places 후보 정보가 선택한 Gemini 모델 제공자 서버로 전송됨
+- 민감정보(여권번호, 카드번호, 연락처, 실명 등)는 스타일 입력에 포함하지 않도록 안내 필요
+- 결과는 초안이며 영업시간/휴무일/입장 조건을 원본 정보와 반드시 대조해야 함
 
 ### 개발과 검증
 
@@ -201,6 +258,7 @@ app/
   services/
     permission_service.py  # 역할·접근 권한 검사
     email_service.py       # SMTP 비밀번호 재설정 이메일
+    ai_itinerary_service.py
     place_search_service.py
     place_candidate_service.py
     map_providers/         # Google Places, Kakao Local 제공자 어댑터
@@ -309,6 +367,10 @@ GEMINI_API_KEY=
 18. 스크린샷 파일로 5MB 초과 파일 또는 PDF/GIF 등 미지원 확장자 선택 시 브라우저 오류 메시지가 뜨는지 확인한다.
 19. 정상적인 JPG/PNG 예약 스크린샷과 선택 예약 링크를 넣고 [스크린샷 분석] 버튼 클릭 시 "분석 중..." 비활성화 후 결과가 외부 예약 정보 폼에 자동 입력되는지 확인한다.
 20. 교통 결과(출발지/도착지/시간/교통수단) 및 숙소 결과(숙소명/체크인/체크아웃 1박 보정)가 정상 채워지고, "일정으로 가져오기" 후 기존 일정 폼에서 최종 저장이 가능한지 확인한다.
+21. Owner/Editor로 로그인해 "해외 AI 여행 코스 초안" 패널이 노출되는지, Viewer 계정에서는 패널이 숨겨지는지 확인한다.
+22. 스타일/관심사/이동 강도/모델 입력 후 [AI 코스 만들기] 클릭 시 버튼이 비활성화되고 "코스를 만드는 중..."이 표시되는지 확인한다.
+23. 날짜별 코스 결과가 표시되고 각 장소 카드의 지도 링크가 새 탭으로 열리는지 확인한다.
+24. 카드의 [후보에 저장] 클릭 시 기존 후보 보관함에 저장되고, 자동으로 일정/DB에 즉시 반영되지 않는지 확인한다.
 
 ## 필수 오류 코드
 
@@ -321,6 +383,7 @@ GEMINI_API_KEY=
 - 비밀번호 재설정: `PASSWORD_RESET_TOKEN_INVALID`, `PASSWORD_RESET_TOKEN_EXPIRED`
 - 장소 후보: `PLACE_CANDIDATE_NOT_FOUND`, `PLACE_CANDIDATE_ALREADY_EXISTS`
 - 장소 검색: `PLACE_SEARCH_QUERY_TOO_SHORT`, `INVALID_PLACE_SEARCH_SCOPE`, `PLACE_SEARCH_NOT_CONFIGURED`, `PLACE_SEARCH_TIMEOUT`, `PLACE_SEARCH_PROVIDER_ERROR`
+- AI 코스: `AI_ITINERARY_STYLE_TOO_SHORT`, `AI_ITINERARY_STYLE_TOO_LONG`, `AI_ITINERARY_INVALID_INTEREST`, `AI_ITINERARY_INVALID_PACE`, `AI_ITINERARY_INVALID_MODEL`, `AI_ITINERARY_DESTINATION_REQUIRED`, `AI_ITINERARY_INVALID_SEARCH_PLAN`, `AI_ITINERARY_NO_PLACE_CANDIDATES`, `AI_ITINERARY_INVALID_COURSE_RESPONSE`, `AI_ITINERARY_PROVIDER_ERROR`
 
 ## 비밀번호 재설정 이메일
 
