@@ -1187,12 +1187,16 @@ body.tools-drawer-open {
     display: flex;
   }
 
-  .trip-mobile-panel {
+  .trip-mobile-panel:not(.is-active) {
     display: none;
   }
 
   .trip-mobile-panel.is-active {
     display: block;
+  }
+
+  .trip-mobile-panel.is-active.trip-map-card {
+    display: flex;
   }
 
   #travel-map {
