@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models.user import User
-from app.schemas.itinerary import ItineraryCreate, ItineraryOut, ItineraryUpdate
+from app.schemas.itinerary import (
+    ItineraryCreate,
+    ItineraryOut,
+    ItineraryRouteRequest,
+    ItineraryRouteResponse,
+    ItineraryUpdate,
+)
 from app.services.itinerary_service import (
     create_itinerary,
     delete_itinerary,
@@ -14,8 +20,22 @@ from app.services.itinerary_service import (
     list_itineraries,
     update_itinerary,
 )
+from app.services.itinerary_route_service import calculate_itinerary_routes
 
 router = APIRouter(prefix="/api", tags=["itineraries"])
+
+
+@router.post(
+    "/trips/{trip_id}/itinerary-routes",
+    response_model=ItineraryRouteResponse,
+)
+def post_trip_itinerary_routes(
+    trip_id: int,
+    data: ItineraryRouteRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ItineraryRouteResponse:
+    return calculate_itinerary_routes(db, trip_id, current_user.id, data)
 
 
 @router.get("/trips/{trip_id}/itineraries", response_model=list[ItineraryOut])

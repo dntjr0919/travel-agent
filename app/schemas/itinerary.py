@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -103,3 +103,21 @@ class ItineraryOut(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+class ItineraryRouteRequest(BaseModel):
+    date: date
+
+
+class ItineraryRouteLegOut(BaseModel):
+    from_itinerary_id: int
+    to_itinerary_id: int
+    duration_seconds: int
+    distance_meters: int
+
+
+class ItineraryRouteResponse(BaseModel):
+    travel_mode: Literal["WALK"]
+    date: date
+    legs: list[ItineraryRouteLegOut]
+    warnings: list[str]
