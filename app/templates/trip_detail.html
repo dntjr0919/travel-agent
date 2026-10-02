@@ -332,6 +332,11 @@
 
   <p id="ai-itinerary-error" class="error-text"></p>
   <div id="ai-itinerary-loading" class="muted small" style="display:none; margin-top: 0.5rem;">코스를 만드는 중...</div>
+  <div class="form-actions" style="margin-top: 0.5rem;">
+    <button type="button" id="ai-itinerary-route-btn" style="display:none;">도보 동선 계산</button>
+  </div>
+  <div id="ai-itinerary-route-loading" class="muted small" style="display:none; margin-top: 0.5rem;">도보 동선을 계산하는 중...</div>
+  <p id="ai-itinerary-route-error" class="error-text"></p>
   <div id="ai-itinerary-result" style="display:none; margin-top: 0.75rem;"></div>
 </section>
 
@@ -449,7 +454,8 @@ let presenceSocket = null;
 let presenceReconnectTimer = null;
 let itemEndAtManuallyEdited = false;
 let externalAccommodationCheckoutManuallyEdited = false;
-let aiItineraryDraftData = null;
+let currentAiItineraryDraft = null;
+let aiItineraryRouteLegMap = {};
 
 function toDatetimeLocalValue(iso) {
   if (!iso) return "";
@@ -854,12 +860,96 @@ function setAiItineraryPanelVisibility(canEdit) {
   if (!canEdit) {
     const errorEl = document.getElementById("ai-itinerary-error");
     const loadingEl = document.getElementById("ai-itinerary-loading");
+    const routeLoadingEl = document.getElementById("ai-itinerary-route-loading");
+    const routeErrorEl = document.getElementById("ai-itinerary-route-error");
+    const routeBtn = document.getElementById("ai-itinerary-route-btn");
     const resultEl = document.getElementById("ai-itinerary-result");
     errorEl.textContent = "";
     loadingEl.style.display = "none";
+    routeLoadingEl.style.display = "none";
+    routeErrorEl.textContent = "";
+    routeBtn.style.display = "none";
     resultEl.style.display = "none";
     resultEl.innerHTML = "";
   }
+}
+
+function buildAiItineraryLegKey(date, fromExternalPlaceId, toExternalPlaceId) {
+  return `${date}::${fromExternalPlaceId}::${toExternalPlaceId}`;
+}
+
+function formatWalkingDuration(durationSeconds) {
+  const minutes = Math.max(1, Math.round(Number(durationSeconds || 0) / 60));
+  return `${minutes}분`;
+}
+
+function formatWalkingDistance(distanceMeters) {
+  const distance = Number(distanceMeters || 0);
+  if (distance >= 1000) {
+    return `${(distance / 1000).toFixed(1)}km`;
+  }
+  return `${Math.round(distance)}m`;
+}
+
+function clearAiItineraryRouteState() {
+  aiItineraryRouteLegMap = {};
+  const routeErrorEl = document.getElementById("ai-itinerary-route-error");
+  const routeLoadingEl = document.getElementById("ai-itinerary-route-loading");
+  routeErrorEl.textContent = "";
+  routeLoadingEl.style.display = "none";
+}
+
+function canCalculateAiWalkingRoutes() {
+  if (!currentAiItineraryDraft || !Array.isArray(currentAiItineraryDraft.days)) {
+    return false;
+  }
+
+  return currentAiItineraryDraft.days.some(
+    (day) => Array.isArray(day.items) && day.items.length >= 2,
+  );
+}
+
+function updateAiItineraryRouteButtonVisibility() {
+  const routeBtn = document.getElementById("ai-itinerary-route-btn");
+  if (!routeBtn) {
+    return;
+  }
+
+  if (currentRole !== "owner" && currentRole !== "editor") {
+    routeBtn.style.display = "none";
+    return;
+  }
+
+  routeBtn.style.display = canCalculateAiWalkingRoutes() ? "inline-flex" : "none";
+}
+
+function buildAiItineraryRoutesRequestPayload() {
+  const days = [];
+
+  for (const day of currentAiItineraryDraft.days || []) {
+    const places = (day.items || [])
+      .filter((item) =>
+        item &&
+        item.external_place_id &&
+        typeof item.latitude === "number" &&
+        typeof item.longitude === "number"
+      )
+      .slice(0, 4)
+      .map((item) => ({
+        external_place_id: item.external_place_id,
+        latitude: item.latitude,
+        longitude: item.longitude,
+      }));
+
+    if (places.length >= 2) {
+      days.push({
+        date: day.date,
+        places,
+      });
+    }
+  }
+
+  return { days };
 }
 
 function getSelectedAiItineraryInterests() {
@@ -899,40 +989,52 @@ function renderAiItineraryDraft(result) {
         <section class="date-group" style="margin-bottom: 1rem;">
           <h3>${escapeHtml(day.date)}</h3>
           ${Array.isArray(day.items) && day.items.length > 0
-            ? day.items.map((item) => `
-              <article class="item-card" style="margin-bottom: 0.75rem;">
-                <div class="item-main">
-                  <span class="badge">AI 추천</span>
-                  <strong>${escapeHtml(item.name || "")}</strong>
-                  ${item.address ? `<p class="muted">📍 ${escapeHtml(item.address)}</p>` : ""}
-                  ${item.category ? `<p class="muted small">카테고리: ${escapeHtml(item.category)}</p>` : ""}
-                  <p class="muted small">추천 이유: ${escapeHtml(item.reason || "")}</p>
-                  <p class="muted small">권장 체류: ${escapeHtml(String(item.suggested_stay_minutes || ""))}분</p>
-                  <div class="form-actions" style="margin-top: 0.5rem;">
-                    ${item.map_url
-                      ? `
-                        <a
-                          class="button secondary"
-                          href="${escapeHtml(item.map_url)}"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          지도 보기
-                        </a>
-                      `
-                      : ""
-                    }
-                    <button
-                      type="button"
-                      class="ai-itinerary-save-btn"
-                      data-place="${encodeURIComponent(JSON.stringify(item))}"
-                    >
-                      후보에 저장
-                    </button>
+            ? day.items.map((item, index) => {
+              const nextItem = day.items[index + 1] || null;
+              const legKey = nextItem
+                ? buildAiItineraryLegKey(day.date, item.external_place_id, nextItem.external_place_id)
+                : "";
+              const leg = legKey ? aiItineraryRouteLegMap[legKey] : null;
+              const legHtml = leg
+                ? `<p class="muted small" style="margin-top: 0.25rem;">↓ 도보 약 ${escapeHtml(formatWalkingDuration(leg.duration_seconds))} · 약 ${escapeHtml(formatWalkingDistance(leg.distance_meters))}</p>`
+                : "";
+
+              return `
+                <article class="item-card" style="margin-bottom: 0.75rem;">
+                  <div class="item-main">
+                    <span class="badge">AI 추천</span>
+                    <strong>${escapeHtml(item.name || "")}</strong>
+                    ${item.address ? `<p class="muted">📍 ${escapeHtml(item.address)}</p>` : ""}
+                    ${item.category ? `<p class="muted small">카테고리: ${escapeHtml(item.category)}</p>` : ""}
+                    <p class="muted small">추천 이유: ${escapeHtml(item.reason || "")}</p>
+                    <p class="muted small">권장 체류: ${escapeHtml(String(item.suggested_stay_minutes || ""))}분</p>
+                    ${legHtml}
+                    <div class="form-actions" style="margin-top: 0.5rem;">
+                      ${item.map_url
+                        ? `
+                          <a
+                            class="button secondary"
+                            href="${escapeHtml(item.map_url)}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            지도 보기
+                          </a>
+                        `
+                        : ""
+                      }
+                      <button
+                        type="button"
+                        class="ai-itinerary-save-btn"
+                        data-place="${encodeURIComponent(JSON.stringify(item))}"
+                      >
+                        후보에 저장
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </article>
-            `).join("")
+                </article>
+              `;
+            }).join("")
             : `<p class="empty-state">이 날짜에 추천된 장소가 없습니다.</p>`}
         </section>
       `).join("")}
@@ -947,6 +1049,8 @@ function renderAiItineraryDraft(result) {
       await savePlaceCandidate(place, button);
     });
   });
+
+  updateAiItineraryRouteButtonVisibility();
 }
 
 function addOneDayToDatetimeLocal(value) {
@@ -1962,6 +2066,9 @@ const aiItinerarySubmitBtn = document.getElementById("ai-itinerary-submit-btn");
 const aiItineraryErrorEl = document.getElementById("ai-itinerary-error");
 const aiItineraryLoadingEl = document.getElementById("ai-itinerary-loading");
 const aiItineraryResultEl = document.getElementById("ai-itinerary-result");
+const aiItineraryRouteBtn = document.getElementById("ai-itinerary-route-btn");
+const aiItineraryRouteLoadingEl = document.getElementById("ai-itinerary-route-loading");
+const aiItineraryRouteErrorEl = document.getElementById("ai-itinerary-route-error");
 
 if (aiItineraryForm) {
   aiItineraryForm.addEventListener("submit", async (event) => {
@@ -1969,6 +2076,7 @@ if (aiItineraryForm) {
 
     aiItineraryErrorEl.textContent = "";
     aiItineraryLoadingEl.style.display = "none";
+    aiItineraryRouteErrorEl.textContent = "";
 
     const styleInput = document.getElementById("ai-itinerary-style");
     const paceSelect = document.getElementById("ai-itinerary-pace");
@@ -2013,17 +2121,78 @@ if (aiItineraryForm) {
         aiItineraryErrorEl.textContent = data.detail || "AI 코스 생성에 실패했습니다.";
         aiItineraryResultEl.style.display = "none";
         aiItineraryResultEl.innerHTML = "";
+        clearAiItineraryRouteState();
+        currentAiItineraryDraft = null;
+        updateAiItineraryRouteButtonVisibility();
         return;
       }
 
-      aiItineraryDraftData = data;
-      renderAiItineraryDraft(aiItineraryDraftData);
+      clearAiItineraryRouteState();
+      currentAiItineraryDraft = data;
+      renderAiItineraryDraft(currentAiItineraryDraft);
     } catch (error) {
       aiItineraryErrorEl.textContent = "AI 코스 생성 중 네트워크 오류가 발생했습니다.";
     } finally {
       aiItineraryLoadingEl.style.display = "none";
       aiItinerarySubmitBtn.disabled = false;
       aiItinerarySubmitBtn.textContent = originalBtnText;
+    }
+  });
+}
+
+if (aiItineraryRouteBtn) {
+  aiItineraryRouteBtn.addEventListener("click", async () => {
+    aiItineraryRouteErrorEl.textContent = "";
+
+    if (!currentAiItineraryDraft) {
+      aiItineraryRouteErrorEl.textContent = "먼저 AI 코스 초안을 생성하세요.";
+      return;
+    }
+
+    const payload = buildAiItineraryRoutesRequestPayload();
+    if (!Array.isArray(payload.days) || payload.days.length === 0) {
+      aiItineraryRouteErrorEl.textContent = "도보 동선을 계산할 수 있는 날짜별 장소(최소 2개)가 없습니다.";
+      return;
+    }
+
+    const originalBtnText = aiItineraryRouteBtn.textContent;
+    aiItineraryRouteBtn.disabled = true;
+    aiItineraryRouteBtn.textContent = "도보 동선을 계산하는 중...";
+    aiItineraryRouteLoadingEl.style.display = "block";
+
+    try {
+      const res = await apiFetch(`/api/trips/${TRIP_ID}/ai-itinerary-drafts/routes`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        aiItineraryRouteErrorEl.textContent = data.detail || "도보 동선 계산에 실패했습니다.";
+        return;
+      }
+
+      aiItineraryRouteLegMap = {};
+
+      for (const day of data.days || []) {
+        for (const leg of day.legs || []) {
+          const key = buildAiItineraryLegKey(
+            day.date,
+            leg.from_external_place_id,
+            leg.to_external_place_id,
+          );
+          aiItineraryRouteLegMap[key] = leg;
+        }
+      }
+
+      renderAiItineraryDraft(currentAiItineraryDraft);
+    } catch (error) {
+      aiItineraryRouteErrorEl.textContent = "도보 동선 계산 중 네트워크 오류가 발생했습니다.";
+    } finally {
+      aiItineraryRouteLoadingEl.style.display = "none";
+      aiItineraryRouteBtn.disabled = false;
+      aiItineraryRouteBtn.textContent = originalBtnText;
     }
   });
 }

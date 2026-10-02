@@ -7,7 +7,13 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.errors import AppError
 from app.models.user import User
-from app.schemas.ai_itinerary import AiItineraryDraftCreate, AiItineraryDraftOut
+from app.schemas.ai_itinerary import (
+    AiItineraryDraftCreate,
+    AiItineraryDraftOut,
+    AiItineraryRouteRequest,
+    AiItineraryRouteResponse,
+)
+from app.services.ai_itinerary_route_service import calculate_ai_itinerary_routes
 from app.services.ai_itinerary_service import create_ai_itinerary_draft
 from app.services.permission_service import require_editor_or_owner, require_trip
 
@@ -40,4 +46,24 @@ def create_ai_itinerary_draft_endpoint(
         interests=data.interests,
         pace=data.pace,
         model=data.model,
+    )
+
+
+@router.post(
+    "/trips/{trip_id}/ai-itinerary-drafts/routes",
+    response_model=AiItineraryRouteResponse,
+)
+def calculate_ai_itinerary_routes_endpoint(
+    trip_id: int,
+    data: AiItineraryRouteRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> AiItineraryRouteResponse:
+    trip = require_trip(db, trip_id)
+    require_editor_or_owner(db, trip_id, current_user.id)
+
+    return calculate_ai_itinerary_routes(
+        request=data,
+        trip_start_date=trip.start_date,
+        trip_end_date=trip.end_date,
     )

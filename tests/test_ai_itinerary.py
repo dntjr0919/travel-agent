@@ -7,7 +7,12 @@ from tests.test_invitations import extract_token, invite_member
 from tests.test_trips import create_trip
 
 
-def _mock_search_places(monkeypatch, results_by_query: dict[str, list[dict]]):
+def _mock_search_places(
+    monkeypatch,
+    results_by_query: dict[str, list[dict]],
+    *,
+    calls: list[dict] | None = None,
+):
     class DummyResult:
         def __init__(self, payload: dict):
             self.provider = payload.get("provider", "google")
@@ -20,8 +25,10 @@ def _mock_search_places(monkeypatch, results_by_query: dict[str, list[dict]]):
             self.map_url = payload.get("map_url")
             self.source_url = payload.get("source_url")
 
-    def fake_search_places(scope: str, query: str):
+    def fake_search_places(scope: str, query: str, *, location_bias=None):
         assert scope == "international"
+        if calls is not None:
+            calls.append({"query": query, "location_bias": location_bias})
         payloads = results_by_query.get(query, [])
         return "google", [DummyResult(item) for item in payloads]
 
@@ -99,14 +106,27 @@ def _course_plan() -> dict:
 
 def _places_payload() -> dict[str, list[dict]]:
     return {
+        "Jeju": [
+            {
+                "provider": "google",
+                "external_place_id": "dest-jeju",
+                "name": "Jeju",
+                "address": "Jeju",
+                "latitude": 33.4996,
+                "longitude": 126.5312,
+                "category": "locality",
+                "map_url": None,
+                "source_url": None,
+            }
+        ],
         "Jeju art museum": [
             {
                 "provider": "google",
                 "external_place_id": "p1",
                 "name": "Jeju Art Center",
                 "address": "Jeju",
-                "latitude": 33.1,
-                "longitude": 126.1,
+                "latitude": 33.505,
+                "longitude": 126.523,
                 "category": "museum",
                 "map_url": "https://maps.example/p1",
                 "source_url": "https://source.example/p1",
@@ -118,8 +138,8 @@ def _places_payload() -> dict[str, list[dict]]:
                 "external_place_id": "p2",
                 "name": "Jeju View Cafe",
                 "address": "Jeju",
-                "latitude": 33.2,
-                "longitude": 126.2,
+                "latitude": 33.492,
+                "longitude": 126.541,
                 "category": "cafe",
                 "map_url": "https://maps.example/p2",
                 "source_url": "https://source.example/p2",
@@ -235,7 +255,8 @@ def test_invalid_search_plan_returns_502(client, monkeypatch):
     register_and_login(client, "owner-ai-invalid-plan@example.com")
     trip = create_trip(client)
 
-    _mock_gemini(monkeypatch, [{"queries": [{"query": "museum only", "category": "culture"}]}])
+    _mock_gemini(monkeypatch, [{"queries": []}])
+    _mock_search_places(monkeypatch, _places_payload())
 
     res = client.post(
         f"/api/trips/{trip['id']}/ai-itinerary-drafts",
@@ -254,14 +275,27 @@ def test_google_places_dedup_by_external_id(client, monkeypatch):
     _mock_search_places(
         monkeypatch,
         {
+            "Jeju": [
+                {
+                    "provider": "google",
+                    "external_place_id": "dest-jeju",
+                    "name": "Jeju",
+                    "address": "Jeju",
+                    "latitude": 33.4996,
+                    "longitude": 126.5312,
+                    "category": "locality",
+                    "map_url": None,
+                    "source_url": None,
+                }
+            ],
             "Jeju art museum": [
                 {
                     "provider": "google",
                     "external_place_id": "p1",
                     "name": "Place A",
                     "address": "Addr",
-                    "latitude": 0.0,
-                    "longitude": 0.0,
+                    "latitude": 33.501,
+                    "longitude": 126.53,
                     "category": "museum",
                     "map_url": None,
                     "source_url": None,
@@ -273,8 +307,8 @@ def test_google_places_dedup_by_external_id(client, monkeypatch):
                     "external_place_id": "p1",
                     "name": "Place A duplicate",
                     "address": "Addr2",
-                    "latitude": 1.0,
-                    "longitude": 1.0,
+                    "latitude": 33.502,
+                    "longitude": 126.529,
                     "category": "cafe",
                     "map_url": None,
                     "source_url": None,
@@ -405,14 +439,27 @@ def test_filters_out_of_range_duplicates_and_invalid_stay(client, monkeypatch):
     _mock_search_places(
         monkeypatch,
         {
+            "Jeju": [
+                {
+                    "provider": "google",
+                    "external_place_id": "dest-jeju",
+                    "name": "Jeju",
+                    "address": "Jeju",
+                    "latitude": 33.4996,
+                    "longitude": 126.5312,
+                    "category": "locality",
+                    "map_url": None,
+                    "source_url": None,
+                }
+            ],
             "Jeju art museum": [
                 {
                     "provider": "google",
                     "external_place_id": "p1",
                     "name": "P1",
                     "address": "A",
-                    "latitude": 0.0,
-                    "longitude": 0.0,
+                    "latitude": 33.501,
+                    "longitude": 126.53,
                     "category": "museum",
                     "map_url": None,
                     "source_url": None,
@@ -422,8 +469,8 @@ def test_filters_out_of_range_duplicates_and_invalid_stay(client, monkeypatch):
                     "external_place_id": "p3",
                     "name": "P3",
                     "address": "A",
-                    "latitude": 0.0,
-                    "longitude": 0.0,
+                    "latitude": 33.503,
+                    "longitude": 126.528,
                     "category": "park",
                     "map_url": None,
                     "source_url": None,
@@ -433,8 +480,8 @@ def test_filters_out_of_range_duplicates_and_invalid_stay(client, monkeypatch):
                     "external_place_id": "p4",
                     "name": "P4",
                     "address": "A",
-                    "latitude": 0.0,
-                    "longitude": 0.0,
+                    "latitude": 33.504,
+                    "longitude": 126.526,
                     "category": "food",
                     "map_url": None,
                     "source_url": None,
@@ -446,8 +493,8 @@ def test_filters_out_of_range_duplicates_and_invalid_stay(client, monkeypatch):
                     "external_place_id": "p2",
                     "name": "P2",
                     "address": "B",
-                    "latitude": 1.0,
-                    "longitude": 1.0,
+                    "latitude": 33.498,
+                    "longitude": 126.537,
                     "category": "cafe",
                     "map_url": None,
                     "source_url": None,
@@ -457,8 +504,8 @@ def test_filters_out_of_range_duplicates_and_invalid_stay(client, monkeypatch):
                     "external_place_id": "p5",
                     "name": "P5",
                     "address": "C",
-                    "latitude": 2.0,
-                    "longitude": 2.0,
+                    "latitude": 33.497,
+                    "longitude": 126.535,
                     "category": "shop",
                     "map_url": None,
                     "source_url": None,
@@ -515,3 +562,283 @@ def test_no_valid_course_items_returns_502(client, monkeypatch):
 
     assert res.status_code == 502
     assert res.json()["code"] == "AI_ITINERARY_INVALID_COURSE_RESPONSE"
+
+
+def test_keeps_nearby_candidates_and_drops_far_candidates(client, monkeypatch):
+    register_and_login(client, "owner-ai-osaka-filter@example.com")
+    trip = create_trip(client)
+    client.patch(f"/api/trips/{trip['id']}", json={"destination": "Osaka, Japan"})
+
+    _mock_gemini(
+        monkeypatch,
+        [
+            {
+                "queries": [
+                    {"query": "local restaurants", "category": "food"},
+                    {"query": "night view spots", "category": "night_view"},
+                ]
+            },
+            {
+                "days": [
+                    {
+                        "date": "2026-11-01",
+                        "items": [
+                            {
+                                "external_place_id": "osaka-food-1",
+                                "reason": "오사카 먹거리 중심 동선입니다.",
+                                "suggested_stay_minutes": 120,
+                            }
+                        ],
+                    }
+                ]
+            },
+        ],
+    )
+
+    _mock_search_places(
+        monkeypatch,
+        {
+            "Osaka, Japan": [
+                {
+                    "provider": "google",
+                    "external_place_id": "dest-osaka",
+                    "name": "Osaka",
+                    "address": "Osaka, Japan",
+                    "latitude": 34.6937,
+                    "longitude": 135.5023,
+                    "category": "locality",
+                    "map_url": None,
+                    "source_url": None,
+                }
+            ],
+            "local restaurants, Osaka, Japan": [
+                {
+                    "provider": "google",
+                    "external_place_id": "osaka-food-1",
+                    "name": "Osaka Ramen Alley",
+                    "address": "Osaka",
+                    "latitude": 34.702,
+                    "longitude": 135.495,
+                    "category": "restaurant",
+                    "map_url": None,
+                    "source_url": None,
+                },
+                {
+                    "provider": "google",
+                    "external_place_id": "kr-place-1",
+                    "name": "ASDF KOREA 본사",
+                    "address": "서울 송파구",
+                    "latitude": 37.5145,
+                    "longitude": 127.1059,
+                    "category": "company",
+                    "map_url": None,
+                    "source_url": None,
+                },
+            ],
+            "night view spots, Osaka, Japan": [
+                {
+                    "provider": "google",
+                    "external_place_id": "osaka-night-1",
+                    "name": "Umeda Sky View",
+                    "address": "Osaka",
+                    "latitude": 34.705,
+                    "longitude": 135.49,
+                    "category": "tourist_attraction",
+                    "map_url": None,
+                    "source_url": None,
+                }
+            ],
+        },
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/ai-itinerary-drafts",
+        json={
+            "style": "일본 오사카 여행 갈거야. 먹거리 위주로 구성해줘.",
+            "interests": ["food"],
+            "pace": "balanced",
+            "model": "gemini_flash_lite",
+        },
+    )
+
+    assert res.status_code == 200
+    item = res.json()["days"][0]["items"][0]
+    assert item["external_place_id"] == "osaka-food-1"
+
+
+def test_destination_center_not_found_returns_422(client, monkeypatch):
+    register_and_login(client, "owner-ai-no-dest-center@example.com")
+    trip = create_trip(client)
+    client.patch(f"/api/trips/{trip['id']}", json={"destination": "Osaka, Japan"})
+
+    _mock_gemini(monkeypatch, [_search_plan()])
+    _mock_search_places(monkeypatch, {"Osaka, Japan": []})
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/ai-itinerary-drafts",
+        json=_valid_request(),
+    )
+
+    assert res.status_code == 422
+    assert res.json()["code"] == "AI_ITINERARY_DESTINATION_NOT_FOUND"
+
+
+def test_ai_itinerary_uses_query_composition_and_location_bias(client, monkeypatch):
+    register_and_login(client, "owner-ai-bias@example.com")
+    trip = create_trip(client)
+    client.patch(f"/api/trips/{trip['id']}", json={"destination": "Osaka, Japan"})
+
+    calls: list[dict] = []
+
+    _mock_gemini(
+        monkeypatch,
+        [
+            {
+                "queries": [
+                    {"query": "local restaurants", "category": "food"},
+                ]
+            },
+            {
+                "days": [
+                    {
+                        "date": "2026-11-01",
+                        "items": [
+                            {
+                                "external_place_id": "osaka-food-1",
+                                "reason": "추천",
+                                "suggested_stay_minutes": 120,
+                            }
+                        ],
+                    }
+                ]
+            },
+        ],
+    )
+    _mock_search_places(
+        monkeypatch,
+        {
+            "Osaka, Japan": [
+                {
+                    "provider": "google",
+                    "external_place_id": "dest-osaka",
+                    "name": "Osaka",
+                    "address": "Osaka",
+                    "latitude": 34.6937,
+                    "longitude": 135.5023,
+                    "category": "locality",
+                    "map_url": None,
+                    "source_url": None,
+                }
+            ],
+            "local restaurants, Osaka, Japan": [
+                {
+                    "provider": "google",
+                    "external_place_id": "osaka-food-1",
+                    "name": "Osaka Food",
+                    "address": "Osaka",
+                    "latitude": 34.695,
+                    "longitude": 135.5,
+                    "category": "restaurant",
+                    "map_url": None,
+                    "source_url": None,
+                }
+            ],
+        },
+        calls=calls,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/ai-itinerary-drafts",
+        json={
+            "style": "먹거리 위주로 구성해줘.",
+            "interests": ["food"],
+            "pace": "balanced",
+            "model": "gemini_flash_lite",
+        },
+    )
+
+    assert res.status_code == 200
+    assert calls[0]["query"] == "Osaka, Japan"
+    assert calls[0]["location_bias"] is None
+    assert calls[1]["query"] == "local restaurants, Osaka, Japan"
+    assert calls[1]["location_bias"] is not None
+
+
+def test_no_candidates_after_filter_returns_existing_error(client, monkeypatch):
+    register_and_login(client, "owner-ai-no-candidates-after-filter@example.com")
+    trip = create_trip(client)
+    client.patch(f"/api/trips/{trip['id']}", json={"destination": "Osaka, Japan"})
+
+    _mock_gemini(
+        monkeypatch,
+        [
+            {
+                "queries": [
+                    {"query": "local restaurants", "category": "food"},
+                ]
+            },
+        ],
+    )
+    _mock_search_places(
+        monkeypatch,
+        {
+            "Osaka, Japan": [
+                {
+                    "provider": "google",
+                    "external_place_id": "dest-osaka",
+                    "name": "Osaka",
+                    "address": "Osaka",
+                    "latitude": 34.6937,
+                    "longitude": 135.5023,
+                    "category": "locality",
+                    "map_url": None,
+                    "source_url": None,
+                }
+            ],
+            "local restaurants, Osaka, Japan": [
+                {
+                    "provider": "google",
+                    "external_place_id": "far-kr-1",
+                    "name": "담은순두부",
+                    "address": "충청남도 천안시",
+                    "latitude": 36.8151,
+                    "longitude": 127.1139,
+                    "category": "restaurant",
+                    "map_url": None,
+                    "source_url": None,
+                }
+            ],
+        },
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/ai-itinerary-drafts",
+        json={
+            "style": "오사카 먹거리 위주로 구성해줘.",
+            "interests": ["food"],
+            "pace": "balanced",
+            "model": "gemini_flash_lite",
+        },
+    )
+
+    assert res.status_code == 422
+    assert res.json()["code"] == "AI_ITINERARY_NO_PLACE_CANDIDATES"
+
+
+def test_general_international_search_unchanged(monkeypatch):
+    from app.services import place_search_service
+
+    calls: list[dict] = []
+
+    def fake_search_google_places(query, api_key, *, location_bias=None):
+        calls.append({"query": query, "location_bias": location_bias, "api_key": api_key})
+        return []
+
+    monkeypatch.setattr(place_search_service, "search_google_places", fake_search_google_places)
+
+    provider, results = place_search_service.search_places("international", " Osaka food ")
+
+    assert provider == "google"
+    assert results == []
+    assert calls[0]["query"] == "Osaka food"
+    assert calls[0]["location_bias"] is None

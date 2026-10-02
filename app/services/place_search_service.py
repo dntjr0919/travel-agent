@@ -9,7 +9,12 @@ from app.services.map_providers.kakao_local import search_kakao_places
 settings = get_settings()
 
 
-def search_places(scope: str, query: str) -> tuple[str, list[PlaceSearchResult]]:
+def search_places(
+    scope: str,
+    query: str,
+    *,
+    location_bias: tuple[float, float, float] | None = None,
+) -> tuple[str, list[PlaceSearchResult]]:
     """검색 범위에 따라 Google 또는 Kakao 장소 검색 공급자를 선택한다."""
     normalized_query = query.strip()
 
@@ -21,10 +26,17 @@ def search_places(scope: str, query: str) -> tuple[str, list[PlaceSearchResult]]
         )
 
     if scope == "international":
-        results = search_google_places(
-            normalized_query,
-            settings.google_maps_api_key,
-        )
+        if location_bias is None:
+            results = search_google_places(
+                normalized_query,
+                settings.google_maps_api_key,
+            )
+        else:
+            results = search_google_places(
+                normalized_query,
+                settings.google_maps_api_key,
+                location_bias=location_bias,
+            )
         return "google", results
 
     if scope == "domestic":

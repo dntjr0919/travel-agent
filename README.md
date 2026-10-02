@@ -146,7 +146,7 @@
 ### 해외 AI 여행 코스 초안 (3단계 MVP)
 
 - Owner/Editor가 여행 스타일, 관심사, 이동 강도, 모델을 입력하면 AI가 날짜별 코스 초안을 제안
-- **2단계 흐름 고정**: LLM이 먼저 검색 계획(질의)만 생성하고, 서버가 Google Places 실제 후보를 수집한 뒤, LLM이 후보 ID 안에서만 코스를 구성
+- **흐름 고정**: LLM 1차 검색 계획 -> 서버 Google Places 후보 수집 -> LLM 2차 후보 선별
 - 코스 초안의 각 항목은 실제 Google Places 결과의 `external_place_id`, 이름, 주소, 좌표, 카테고리, 지도 링크를 기반으로 구성
 - 초안은 DB에 자동 저장하지 않으며, 사용자가 각 항목의 **후보에 저장** 버튼을 누른 경우에만 기존 후보 보관함 API로 저장
 - Viewer는 AI 코스 패널과 생성 결과를 볼 수 없음
@@ -166,10 +166,12 @@
 
 #### 안전장치와 재검증
 
-- 검색 계획 단계: 1~4개 검색어만 허용하고 destination 포함 여부를 검증
-- 장소 수집 단계: 검색어별 상위 5개만 사용, 전체 20개 제한, `external_place_id` 기준 중복 제거
+- 검색 계획 단계: 1~4개 검색어만 허용하며, 서버가 각 검색어에 destination을 강제로 결합
+- 장소 수집 단계: destination 중심 좌표를 먼저 해석하고, Google Places `locationBias(circle, 30km)`를 적용해 검색
+- 서버 재검증 단계: 각 후보의 좌표를 하버사인으로 계산해 destination 중심 30km 초과 후보를 제거하고, `external_place_id` 기준 중복 제거
 - 코스 구성 단계: LLM 응답에서 후보 목록에 없는 ID 제거, 여행 기간 밖 날짜 제거, 하루 4개 제한, 동일 장소 중복 제거(일자 내/일자 간)
 - 체류 시간은 30~360분, 30분 단위만 허용
+- destination 중심 좌표를 찾지 못하면 `422 AI_ITINERARY_DESTINATION_NOT_FOUND` 반환
 - 유효 항목이 하나도 없으면 `AI_ITINERARY_INVALID_COURSE_RESPONSE` 반환
 - LLM 프롬프트/원문 응답/사용자 스타일 전문/Google Places 원문 응답은 로그에 남기지 않음
 
@@ -186,6 +188,43 @@
 - AI 코스 생성 시 입력한 여행 스타일과 Google Places 후보 정보가 선택한 Gemini 모델 제공자 서버로 전송됨
 - 민감정보(여권번호, 카드번호, 연락처, 실명 등)는 스타일 입력에 포함하지 않도록 안내 필요
 - 결과는 초안이며 영업시간/휴무일/입장 조건을 원본 정보와 반드시 대조해야 함
+
+### AI 코스 초안 도보 동선 계산 (4단계 MVP)
+
+- AI 코스 초안 결과 카드에서 날짜별 인접 장소 사이의 도보 이동 예상 시간/거리를 계산해 표시합니다.
+- 서버는 브라우저가 보낸 코스 초안의 날짜/장소 좌표를 검증한 뒤 Google Routes API(Compute Routes, WALK)로 계산합니다.
+- 결과는 화면 표시용 임시 데이터이며 DB에는 저장하지 않습니다.
+- AI 코스 초안을 새로 생성하면 이전 도보 동선 계산 결과는 폐기됩니다.
+
+#### API
+
+- 엔드포인트: `POST /api/trips/{trip_id}/ai-itinerary-drafts/routes`
+- 권한: Owner, Editor (Viewer는 `403 FORBIDDEN`)
+- 요청: 날짜별 장소 배열(하루 2~4개, 전체 최대 여행 기간 일수 × 4개)
+- 응답: `travel_mode`, 날짜별 `legs`, `warnings`
+
+#### 동작 및 검증 규칙
+
+- 여행 기간 밖 날짜는 `422 AI_ITINERARY_ROUTE_INVALID_DATE`
+- 하루 장소 수(4개 초과) 또는 전체 장소 수(여행 기간 일수 × 4개 초과)는 `422 AI_ITINERARY_ROUTE_TOO_MANY_PLACES`
+- 동선 계산은 하루 최대 4개 장소를 지원하며, 전체 장소 수는 여행 기간 일수 × 4개까지 허용한다.
+- 동일 day 내 중복 `external_place_id`는 422 검증 오류
+- Routes API 키 미설정은 `503 AI_ITINERARY_ROUTE_NOT_CONFIGURED`
+- 외부 호출 실패는 `502 AI_ITINERARY_ROUTE_PROVIDER_ERROR`
+- 응답 형식 이상은 `502 AI_ITINERARY_ROUTE_INVALID_RESPONSE`
+
+#### 제외 범위
+
+- Google Maps 지도 임베드, 마커, 폴리라인
+- waypoint optimization
+- 대중교통/차량/자전거 모드
+- Places 재검색/Place Details 호출
+
+#### 운영 주의
+
+- `GOOGLE_MAPS_API_KEY`를 재사용하며 Routes API 활성화가 필요합니다.
+- API 키 제한(HTTP referrer/IP, quota)을 설정하고 호출 비용을 모니터링해야 합니다.
+- 도보 시간/거리 값은 API 계산 시점의 추정치입니다.
 
 ### 개발과 검증
 
@@ -384,6 +423,7 @@ GEMINI_API_KEY=
 - 장소 후보: `PLACE_CANDIDATE_NOT_FOUND`, `PLACE_CANDIDATE_ALREADY_EXISTS`
 - 장소 검색: `PLACE_SEARCH_QUERY_TOO_SHORT`, `INVALID_PLACE_SEARCH_SCOPE`, `PLACE_SEARCH_NOT_CONFIGURED`, `PLACE_SEARCH_TIMEOUT`, `PLACE_SEARCH_PROVIDER_ERROR`
 - AI 코스: `AI_ITINERARY_STYLE_TOO_SHORT`, `AI_ITINERARY_STYLE_TOO_LONG`, `AI_ITINERARY_INVALID_INTEREST`, `AI_ITINERARY_INVALID_PACE`, `AI_ITINERARY_INVALID_MODEL`, `AI_ITINERARY_DESTINATION_REQUIRED`, `AI_ITINERARY_INVALID_SEARCH_PLAN`, `AI_ITINERARY_NO_PLACE_CANDIDATES`, `AI_ITINERARY_INVALID_COURSE_RESPONSE`, `AI_ITINERARY_PROVIDER_ERROR`
+- AI 도보 동선: `AI_ITINERARY_ROUTE_INVALID_DATE`, `AI_ITINERARY_ROUTE_TOO_MANY_PLACES`, `AI_ITINERARY_ROUTE_NOT_CONFIGURED`, `AI_ITINERARY_ROUTE_PROVIDER_ERROR`, `AI_ITINERARY_ROUTE_INVALID_RESPONSE`
 
 ## 비밀번호 재설정 이메일
 

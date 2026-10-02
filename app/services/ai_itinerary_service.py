@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import date, timedelta
 
 from app.core.config import DEFAULT_RESERVATION_ANALYSIS_MODEL, RESERVATION_ANALYSIS_MODEL_NAMES
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 AI_ITINERARY_DEFAULT_WARNING = "AI가 구성한 초안입니다. 영업시간, 휴무일, 입장 조건은 방문 전에 원본 정보와 대조하세요."
 ALLOWED_INTERESTS = {"culture", "cafe", "nature", "shopping", "food", "night_view"}
 ALLOWED_PACES = {"relaxed", "balanced", "packed"}
+AI_ITINERARY_LOCATION_BIAS_RADIUS_METERS = 30000.0
 
 
 def _strip_markdown_code_fence(text: str) -> str:
@@ -127,7 +129,8 @@ def _build_search_plan_prompt(
 
 규칙:
 - queries 길이는 1~4
-- 각 query는 destination을 반드시 포함
+- 검색어는 여행 목적지를 명확히 포함한 Google Places Text Search용 쿼리여야 함
+- 다른 국가나 도시 장소를 추천하거나 검색하지 말 것
 - query는 Google Places Text Search에 적합한 자연어 문장
 - 장소명, 주소, 좌표, 가격, 일정, 허구 장소를 반환하지 말 것
 - JSON 외 텍스트 금지
@@ -195,12 +198,79 @@ def _normalize_place_search_error(exc: AppError) -> AppError:
     return exc
 
 
-def _collect_candidates(queries: list[str]) -> list[PlaceSearchResult]:
+def _haversine_distance_meters(
+    latitude1: float,
+    longitude1: float,
+    latitude2: float,
+    longitude2: float,
+) -> float:
+    earth_radius_meters = 6371000.0
+
+    lat1_rad = math.radians(latitude1)
+    lon1_rad = math.radians(longitude1)
+    lat2_rad = math.radians(latitude2)
+    lon2_rad = math.radians(longitude2)
+
+    lat_delta = lat2_rad - lat1_rad
+    lon_delta = lon2_rad - lon1_rad
+
+    a = (
+        math.sin(lat_delta / 2) ** 2
+        + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(lon_delta / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return earth_radius_meters * c
+
+
+def _ensure_query_contains_destination(intent_query: str, destination: str) -> str:
+    query = intent_query.strip()
+    if not query:
+        raise AppError(502, "AI_ITINERARY_INVALID_SEARCH_PLAN", "AI 검색 계획 결과를 해석할 수 없습니다.")
+
+    normalized_destination = destination.strip()
+    if not normalized_destination:
+        raise AppError(422, "AI_ITINERARY_DESTINATION_REQUIRED", "여행지(destination)를 먼저 입력하세요.")
+
+    if normalized_destination.lower() in query.lower():
+        return query
+
+    return f"{query}, {normalized_destination}"
+
+
+def _resolve_destination_center(destination: str) -> tuple[float, float]:
+    try:
+        _, results = search_places("international", destination)
+    except AppError as exc:
+        raise _normalize_place_search_error(exc) from exc
+
+    for place in results:
+        if place.latitude is None or place.longitude is None:
+            continue
+        return float(place.latitude), float(place.longitude)
+
+    raise AppError(422, "AI_ITINERARY_DESTINATION_NOT_FOUND", "여행 목적지의 위치를 찾을 수 없습니다.")
+
+
+def _collect_candidates(
+    queries: list[str],
+    *,
+    destination_center: tuple[float, float],
+) -> list[PlaceSearchResult]:
     deduped: dict[str, PlaceSearchResult] = {}
+    center_latitude, center_longitude = destination_center
 
     for query in queries:
         try:
-            _, results = search_places("international", query)
+            _, results = search_places(
+                "international",
+                query,
+                location_bias=(
+                    center_latitude,
+                    center_longitude,
+                    AI_ITINERARY_LOCATION_BIAS_RADIUS_METERS,
+                ),
+            )
         except AppError as exc:
             raise _normalize_place_search_error(exc) from exc
 
@@ -210,6 +280,20 @@ def _collect_candidates(queries: list[str]) -> list[PlaceSearchResult]:
 
             if not place_id or not place_name:
                 continue
+
+            if place.latitude is None or place.longitude is None:
+                continue
+
+            distance_meters = _haversine_distance_meters(
+                center_latitude,
+                center_longitude,
+                float(place.latitude),
+                float(place.longitude),
+            )
+
+            if distance_meters > AI_ITINERARY_LOCATION_BIAS_RADIUS_METERS:
+                continue
+
             if place_id in deduped:
                 continue
 
@@ -293,11 +377,14 @@ def create_ai_itinerary_draft(
 
     for planned in search_plan.queries:
         query = planned.query.strip()
-        if not query or destination_lower not in query.lower():
+        if not query:
             raise AppError(502, "AI_ITINERARY_INVALID_SEARCH_PLAN", "AI 검색 계획 결과를 해석할 수 없습니다.")
-        query_strings.append(query)
 
-    candidates = _collect_candidates(query_strings)
+        query_strings.append(_ensure_query_contains_destination(query, normalized_destination))
+
+    destination_center = _resolve_destination_center(normalized_destination)
+
+    candidates = _collect_candidates(query_strings, destination_center=destination_center)
 
     if not candidates:
         raise AppError(422, "AI_ITINERARY_NO_PLACE_CANDIDATES", "검색된 실제 장소 후보가 없습니다.")

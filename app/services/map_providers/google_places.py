@@ -19,7 +19,12 @@ GOOGLE_FIELD_MASK = ",".join(
 )
 
 
-def search_google_places(query: str, api_key: str) -> list[PlaceSearchResult]:
+def search_google_places(
+    query: str,
+    api_key: str,
+    *,
+    location_bias: tuple[float, float, float] | None = None,
+) -> list[PlaceSearchResult]:
     """Google Places API (New) Text Search로 해외 장소를 검색한다."""
     if not api_key:
         raise AppError(
@@ -39,6 +44,18 @@ def search_google_places(query: str, api_key: str) -> list[PlaceSearchResult]:
         "languageCode": "ko",
         "maxResultCount": 10,
     }
+
+    if location_bias is not None:
+        center_latitude, center_longitude, radius_meters = location_bias
+        payload["locationBias"] = {
+            "circle": {
+                "center": {
+                    "latitude": center_latitude,
+                    "longitude": center_longitude,
+                },
+                "radius": radius_meters,
+            }
+        }
 
     try:
         response = httpx.post(
