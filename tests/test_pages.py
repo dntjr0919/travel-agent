@@ -47,6 +47,12 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'id="trip-tools-panel-places"' in text
     assert 'id="trip-tools-panel-ai"' in text
     assert 'id="trip-tools-panel-reservations"' in text
+    assert 'id="travel-booking-candidate-panel"' in text
+    assert 'id="travel-booking-transport-list"' in text
+    assert 'id="travel-booking-accommodation-list"' in text
+    assert 'id="reservation-analysis-save-candidate-btn"' in text
+    assert 'id="reservation-analysis-save-candidate-success"' in text
+    assert 'id="reservation-analysis-save-candidate-error"' in text
     assert 'id="trip-mobile-tabs"' in text
     assert 'id="trip-mobile-tab-schedule"' in text
     assert 'id="trip-mobile-tab-map"' in text

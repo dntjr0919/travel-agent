@@ -395,7 +395,109 @@
   </form>
 
   <p id="external-booking-error" class="error-text"></p>
+  <div id="reservation-analysis-candidate-save-actions" style="display:none">
+    <button id="reservation-analysis-save-candidate-btn" type="button" style="display:none">
+      후보 보관함에 저장
+    </button>
+    <p id="reservation-analysis-save-candidate-success" class="muted small" style="display:none" aria-live="polite"></p>
+    <p id="reservation-analysis-save-candidate-error" class="error-text" style="display:none" aria-live="polite"></p>
+  </div>
 </section>
+
+  <section id="travel-booking-candidate-panel" class="card" style="display:none">
+    <div class="section-header">
+      <div>
+        <h2>교통·숙박 후보 보관함</h2>
+        <p class="muted small">가격은 직접 입력한 참고 정보이며 실시간 가격이 아닙니다.</p>
+      </div>
+      <button id="travel-booking-candidate-add-btn" type="button" style="display:none">
+        교통·숙박 후보 추가
+      </button>
+    </div>
+
+    <p id="travel-booking-candidate-error" class="error-text"></p>
+    <form id="travel-booking-candidate-form" class="form" style="display:none">
+      <label>종류
+        <select name="kind" required>
+          <option value="transport">교통</option>
+          <option value="accommodation">숙박</option>
+        </select>
+      </label>
+      <label>제목
+        <input type="text" name="title" required maxlength="200" />
+      </label>
+      <div data-booking-kind="transport">
+        <label>교통수단
+          <select name="transport_mode">
+            <option value="flight">항공</option>
+            <option value="train">기차</option>
+            <option value="intercity_bus">고속·시외버스</option>
+            <option value="local_transit">현지 대중교통</option>
+            <option value="other">기타</option>
+          </select>
+        </label>
+        <label>편명·노선명
+          <input type="text" name="service_number" maxlength="80" />
+        </label>
+        <div class="form-grid-2">
+          <label>출발 장소
+            <input type="text" name="departure_name" maxlength="200" />
+          </label>
+          <label>도착 장소
+            <input type="text" name="arrival_name" maxlength="200" />
+          </label>
+        </div>
+        <div class="form-grid-2">
+          <label>출발 일시
+            <input type="datetime-local" name="departure_at" />
+          </label>
+          <label>도착 일시
+            <input type="datetime-local" name="arrival_at" />
+          </label>
+        </div>
+      </div>
+      <div data-booking-kind="accommodation" style="display:none">
+        <label>숙소명
+          <input type="text" name="accommodation_name" maxlength="200" />
+        </label>
+        <div class="form-grid-2">
+          <label>체크인 일시
+            <input type="datetime-local" name="check_in_at" />
+          </label>
+          <label>체크아웃 일시
+            <input type="datetime-local" name="check_out_at" />
+          </label>
+        </div>
+      </div>
+      <label>제공자·예약처
+        <input type="text" name="provider_name" maxlength="120" />
+      </label>
+      <div class="form-grid-2">
+        <label>가격
+          <input type="number" name="price_amount" min="0" step="any" />
+        </label>
+        <label>통화
+          <input type="text" name="currency" maxlength="12" placeholder="KRW" />
+        </label>
+      </div>
+      <label>예약 링크
+        <input type="url" name="booking_url" maxlength="1000" placeholder="https://example.com" />
+      </label>
+      <label>메모
+        <textarea name="memo" rows="3"></textarea>
+      </label>
+      <div class="form-actions">
+        <button type="submit" id="travel-booking-candidate-save-btn">저장</button>
+        <button type="button" id="travel-booking-candidate-cancel-btn" class="secondary">취소</button>
+      </div>
+    </form>
+    <h3>교통</h3>
+    <div id="travel-booking-transport-list" class="travel-booking-candidate-list"></div>
+    <p id="travel-booking-transport-empty" class="muted small">저장된 교통 후보가 없습니다.</p>
+    <h3>숙박</h3>
+    <div id="travel-booking-accommodation-list" class="travel-booking-candidate-list"></div>
+    <p id="travel-booking-accommodation-empty" class="muted small">저장된 숙박 후보가 없습니다.</p>
+  </section>
 
   </div>
 
@@ -649,6 +751,8 @@ const TRANSPORT_TYPE_LABELS = {
 let currentUser = null;
 let currentRole = null;
 let currentTrip = null;
+let currentReservationAnalysisResult = null;
+let currentReservationAnalysisSource = null;
 let presenceSocket = null;
 let presenceReconnectTimer = null;
 let itemEndAtManuallyEdited = false;
@@ -659,6 +763,7 @@ let aiItineraryRouteLegMap = {};
 let itineraryRouteLegMap = new Map();
 let itineraryRouteRequestInProgress = false;
 let currentPlaceCandidates = [];
+let currentTravelBookingCandidates = [];
 updateTravelMapTabCounts();
 let travelMap = null;
 let travelMapInfoWindow = null;
@@ -1108,7 +1213,7 @@ function canEditPlaces() {
 }
 
 function getAvailableToolsTabs() {
-  return toolsDrawerCanEdit ? ["places", "ai", "reservations"] : ["places"];
+  return toolsDrawerCanEdit ? ["places", "ai", "reservations"] : ["places", "reservations"];
 }
 
 function syncToolsPanelVisibility() {
@@ -1118,8 +1223,10 @@ function syncToolsPanelVisibility() {
   const aiPanel = document.getElementById("ai-itinerary-panel");
   const reservationImagePanel = document.getElementById("reservation-image-panel");
   const externalBookingPanel = document.getElementById("external-booking-panel");
+  const bookingCandidatePanel = document.getElementById("travel-booking-candidate-panel");
+  const canViewReservations = activeToolsTab === "reservations";
   const aiVisible = toolsDrawerCanEdit && activeToolsTab === "ai";
-  const reservationsVisible = toolsDrawerCanEdit && activeToolsTab === "reservations";
+  const reservationsVisible = canViewReservations && toolsDrawerCanEdit;
   const placesVisible = activeToolsTab === "places";
 
   if (placesTab) {
@@ -1133,8 +1240,8 @@ function syncToolsPanelVisibility() {
   }
 
   if (reservationsTab) {
-    reservationsTab.style.display = reservationsVisible ? "block" : "none";
-    reservationsTab.classList.toggle("is-active", reservationsVisible);
+    reservationsTab.style.display = canViewReservations ? "block" : "none";
+    reservationsTab.classList.toggle("is-active", canViewReservations);
   }
 
   if (aiPanel) {
@@ -1147,6 +1254,10 @@ function syncToolsPanelVisibility() {
 
   if (externalBookingPanel) {
     externalBookingPanel.style.display = reservationsVisible ? "block" : "none";
+  }
+
+  if (bookingCandidatePanel) {
+    bookingCandidatePanel.style.display = canViewReservations ? "block" : "none";
   }
 
   const tabButtons = {
@@ -1182,7 +1293,11 @@ function setActiveToolsTab(tabName) {
 function setToolsDrawerPermissions(canEdit) {
   toolsDrawerCanEdit = Boolean(canEdit);
 
-  if (!toolsDrawerCanEdit && activeToolsTab !== "places") {
+  if (!toolsDrawerCanEdit) {
+    resetReservationAnalysisCandidateSaveState();
+  }
+
+  if (!toolsDrawerCanEdit && !["places", "reservations"].includes(activeToolsTab)) {
     activeToolsTab = "places";
   }
 
@@ -2546,11 +2661,35 @@ function parseExternalBookingUrl(rawUrl) {
   };
 }
 
+function buildReservationAnalysisResultFromExternalBookingForm(form) {
+  const priceText = form.price.value.trim();
+  const parsedPrice = priceText ? Number(priceText) : null;
+  return {
+    kind: form.kind.value,
+    title: form.title.value,
+    provider_name: form.provider.value,
+    booking_url: form.booking_url.value,
+    price_amount: parsedPrice !== null && Number.isFinite(parsedPrice) ? parsedPrice : null,
+    currency: form.currency.value,
+    memo: form.memo.value,
+    transport_mode: form.transport_type.value,
+    service_number: form.service_number?.value || null,
+    departure_name: form.departure_name.value,
+    arrival_name: form.arrival_name.value,
+    departure_at: form.departure_at.value ? fromDatetimeLocalValue(form.departure_at.value) : null,
+    arrival_at: form.arrival_at.value ? fromDatetimeLocalValue(form.arrival_at.value) : null,
+    accommodation_name: form.accommodation_name.value,
+    checkin_at: form.checkin_at.value ? fromDatetimeLocalValue(form.checkin_at.value) : null,
+    checkout_at: form.checkout_at.value ? fromDatetimeLocalValue(form.checkout_at.value) : null,
+  };
+}
+
 function applyExternalBookingHints() {
   const form = document.getElementById("external-booking-form");
   const errorEl = document.getElementById("external-booking-error");
   const bookingUrl = form.booking_url.value.trim();
 
+  resetReservationAnalysisCandidateSaveState();
   errorEl.textContent = "";
 
   if (!bookingUrl) {
@@ -2569,6 +2708,10 @@ function applyExternalBookingHints() {
   externalAccommodationCheckoutManuallyEdited = false;
   toggleExternalBookingFields();
   syncAccommodationCheckoutFromCheckin();
+  setReservationAnalysisCandidateSaveResult(
+    buildReservationAnalysisResultFromExternalBookingForm(form),
+    "url",
+  );
   return true;
 }
 
@@ -3087,6 +3230,336 @@ async function loadPlaceCandidates() {
     `;
   }
 }
+
+function safeTravelBookingUrl(value) {
+  if (!value) {
+    return "";
+  }
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function formatTravelBookingPrice(candidate) {
+  if (candidate.price_amount === null || candidate.price_amount === undefined) {
+    return "가격 미정";
+  }
+  const amount = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 }).format(candidate.price_amount);
+  return `${amount}${candidate.currency ? ` ${candidate.currency}` : ""}`;
+}
+
+function renderTravelBookingCandidateCard(candidate, canEdit) {
+  const isTransport = candidate.kind === "transport";
+  const modeLabels = {
+    flight: "항공",
+    train: "기차",
+    intercity_bus: "고속·시외버스",
+    local_transit: "현지 대중교통",
+    other: "기타",
+  };
+  const title = isTransport ? candidate.title : (candidate.accommodation_name || candidate.title);
+  const details = isTransport
+    ? [candidate.provider_name, candidate.service_number].filter(Boolean).join(" · ")
+    : candidate.provider_name || "";
+  const places = isTransport
+    ? [candidate.departure_name, candidate.arrival_name].filter(Boolean).map(escapeHtml).join(" → ")
+    : escapeHtml(candidate.accommodation_name || "");
+  const dates = isTransport
+    ? `${candidate.departure_at ? escapeHtml(formatDateTime(candidate.departure_at)) : "출발 시간 미정"} → ${candidate.arrival_at ? escapeHtml(formatDateTime(candidate.arrival_at)) : "도착 시간 미정"}`
+    : `${candidate.check_in_at ? escapeHtml(formatDateTime(candidate.check_in_at)) : "체크인 미정"} → ${candidate.check_out_at ? escapeHtml(formatDateTime(candidate.check_out_at)) : "체크아웃 미정"}`;
+  const bookingUrl = safeTravelBookingUrl(candidate.booking_url);
+
+  return `
+    <article class="travel-booking-candidate-card">
+      <div class="travel-booking-candidate-main">
+        <div class="place-candidate-title-row">
+          ${isTransport ? `<span class="badge">${escapeHtml(modeLabels[candidate.transport_mode] || "교통")}</span>` : ""}
+          <h4>${escapeHtml(title)}</h4>
+        </div>
+        ${details ? `<p class="muted">${escapeHtml(details)}</p>` : ""}
+        ${places ? `<p>${places}</p>` : ""}
+        <p class="muted small">${dates}</p>
+        <p class="travel-booking-price">${escapeHtml(formatTravelBookingPrice(candidate))}</p>
+        ${candidate.memo ? `<p class="memo">${escapeHtml(candidate.memo).replace(/\n/g, "<br>")}</p>` : ""}
+      </div>
+      <div class="place-candidate-actions">
+        ${bookingUrl ? `<a class="button secondary" href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer">예약 링크</a>` : ""}
+        ${canEdit ? `
+          <button type="button" class="add-booking-candidate-to-itinerary-btn" data-id="${candidate.id}">일정에 추가</button>
+          <button type="button" class="edit-travel-booking-candidate-btn secondary" data-id="${candidate.id}">수정</button>
+          <button type="button" class="delete-travel-booking-candidate-btn secondary" data-id="${candidate.id}">삭제</button>
+        ` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderTravelBookingCandidates(candidates) {
+  currentTravelBookingCandidates = Array.isArray(candidates) ? candidates : [];
+  const canEdit = canEditPlaces();
+  const addButton = document.getElementById("travel-booking-candidate-add-btn");
+  const transportCandidates = currentTravelBookingCandidates.filter((item) => item.kind === "transport");
+  const accommodationCandidates = currentTravelBookingCandidates.filter((item) => item.kind === "accommodation");
+  const transportList = document.getElementById("travel-booking-transport-list");
+  const accommodationList = document.getElementById("travel-booking-accommodation-list");
+
+  addButton.style.display = canEdit ? "inline-block" : "none";
+  transportList.innerHTML = transportCandidates.map((item) => renderTravelBookingCandidateCard(item, canEdit)).join("");
+  accommodationList.innerHTML = accommodationCandidates.map((item) => renderTravelBookingCandidateCard(item, canEdit)).join("");
+  document.getElementById("travel-booking-transport-empty").style.display = transportCandidates.length ? "none" : "block";
+  document.getElementById("travel-booking-accommodation-empty").style.display = accommodationCandidates.length ? "none" : "block";
+
+  if (!canEdit) {
+    return;
+  }
+  document.querySelectorAll(".add-booking-candidate-to-itinerary-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      const candidate = currentTravelBookingCandidates.find((item) => item.id === Number(button.dataset.id));
+      if (candidate) openItemFormFromBookingCandidate(candidate);
+    });
+  });
+  document.querySelectorAll(".edit-travel-booking-candidate-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      const candidate = currentTravelBookingCandidates.find((item) => item.id === Number(button.dataset.id));
+      if (candidate) openTravelBookingCandidateForm(candidate);
+    });
+  });
+  document.querySelectorAll(".delete-travel-booking-candidate-btn").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (confirm("이 교통·숙박 후보를 삭제하시겠습니까?")) {
+        await deleteTravelBookingCandidate(Number(button.dataset.id));
+      }
+    });
+  });
+}
+
+async function loadTravelBookingCandidates() {
+  const errorEl = document.getElementById("travel-booking-candidate-error");
+  try {
+    const res = await apiFetch(`/api/trips/${TRIP_ID}/booking-candidates`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      currentTravelBookingCandidates = [];
+      renderTravelBookingCandidates([]);
+      errorEl.textContent = data.detail || "교통·숙박 후보를 불러오지 못했습니다.";
+      return;
+    }
+    errorEl.textContent = "";
+    renderTravelBookingCandidates(data);
+  } catch (error) {
+    console.error("교통·숙박 후보 목록 오류", error);
+    currentTravelBookingCandidates = [];
+    renderTravelBookingCandidates([]);
+    errorEl.textContent = "교통·숙박 후보를 불러오는 중 네트워크 오류가 발생했습니다.";
+  }
+}
+
+function syncTravelBookingCandidateFormKind({ clearInactive = true } = {}) {
+  const form = document.getElementById("travel-booking-candidate-form");
+  const kind = form.elements.kind.value;
+  form.querySelectorAll("[data-booking-kind]").forEach((section) => {
+    const visible = section.dataset.bookingKind === kind;
+    section.style.display = visible ? "block" : "none";
+    if (!visible && clearInactive) {
+      section.querySelectorAll("input, select, textarea").forEach((input) => {
+        input.value = "";
+      });
+    }
+  });
+  form.elements.transport_mode.required = kind === "transport";
+  form.elements.accommodation_name.required = kind === "accommodation";
+  if (kind === "transport" && !form.elements.transport_mode.value) {
+    form.elements.transport_mode.value = "flight";
+  }
+}
+
+function openTravelBookingCandidateForm(candidate = null) {
+  const form = document.getElementById("travel-booking-candidate-form");
+  document.getElementById("travel-booking-candidate-error").textContent = "";
+  form.reset();
+  form.dataset.candidateId = candidate ? String(candidate.id) : "";
+  form.elements.kind.value = candidate?.kind || "transport";
+  [
+    "title", "provider_name", "booking_url", "price_amount", "currency", "memo",
+    "transport_mode", "service_number", "departure_name", "arrival_name", "departure_at", "arrival_at",
+    "accommodation_name", "check_in_at", "check_out_at",
+  ].forEach((name) => {
+    const value = candidate?.[name];
+    form.elements[name].value = name.endsWith("_at") ? toDatetimeLocalValue(value) : (value ?? "");
+  });
+  syncTravelBookingCandidateFormKind();
+  document.getElementById("travel-booking-candidate-save-btn").textContent = candidate ? "수정 저장" : "저장";
+  form.style.display = "flex";
+  form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function closeTravelBookingCandidateForm() {
+  const form = document.getElementById("travel-booking-candidate-form");
+  form.style.display = "none";
+  form.reset();
+  form.dataset.candidateId = "";
+  document.getElementById("travel-booking-candidate-error").textContent = "";
+}
+
+function getTravelBookingCandidatePayloadFromForm() {
+  const form = document.getElementById("travel-booking-candidate-form");
+  const value = (name) => form.elements[name].value.trim() || null;
+  const kind = form.elements.kind.value;
+  const payload = {
+    kind,
+    title: form.elements.title.value.trim(),
+    provider_name: value("provider_name"),
+    booking_url: value("booking_url"),
+    price_amount: form.elements.price_amount.value === "" ? null : Number(form.elements.price_amount.value),
+    currency: value("currency"),
+    memo: value("memo"),
+    transport_mode: null,
+    service_number: null,
+    departure_name: null,
+    arrival_name: null,
+    departure_at: null,
+    arrival_at: null,
+    accommodation_name: null,
+    check_in_at: null,
+    check_out_at: null,
+  };
+  if (kind === "transport") {
+    payload.transport_mode = value("transport_mode");
+    payload.service_number = value("service_number");
+    payload.departure_name = value("departure_name");
+    payload.arrival_name = value("arrival_name");
+    payload.departure_at = fromDatetimeLocalValue(form.elements.departure_at.value);
+    payload.arrival_at = fromDatetimeLocalValue(form.elements.arrival_at.value);
+  } else {
+    payload.accommodation_name = value("accommodation_name");
+    payload.check_in_at = fromDatetimeLocalValue(form.elements.check_in_at.value);
+    payload.check_out_at = fromDatetimeLocalValue(form.elements.check_out_at.value);
+  }
+  return payload;
+}
+
+async function saveTravelBookingCandidate(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const errorEl = document.getElementById("travel-booking-candidate-error");
+  const submitButton = document.getElementById("travel-booking-candidate-save-btn");
+  const kind = form.elements.kind.value;
+  const departureAt = form.elements.departure_at.value;
+  const arrivalAt = form.elements.arrival_at.value;
+  const checkInAt = form.elements.check_in_at.value;
+  const checkOutAt = form.elements.check_out_at.value;
+  errorEl.textContent = "";
+
+  if (kind === "transport" && departureAt && arrivalAt && arrivalAt <= departureAt) {
+    errorEl.textContent = "도착 일시는 출발 일시보다 늦어야 합니다.";
+    return;
+  }
+  if (kind === "accommodation" && checkInAt && checkOutAt && checkOutAt <= checkInAt) {
+    errorEl.textContent = "체크아웃 일시는 체크인 일시보다 늦어야 합니다.";
+    return;
+  }
+  const payload = getTravelBookingCandidatePayloadFromForm();
+  if (payload.booking_url) {
+    const safeUrl = safeTravelBookingUrl(payload.booking_url);
+    if (!safeUrl) {
+      errorEl.textContent = "예약 링크는 http 또는 https 주소를 입력하세요.";
+      return;
+    }
+    payload.booking_url = safeUrl;
+  }
+
+  const candidateId = form.dataset.candidateId;
+  const originalText = submitButton.textContent;
+  submitButton.disabled = true;
+  submitButton.textContent = "저장 중...";
+  try {
+    const res = await apiFetch(
+      candidateId ? `/api/booking-candidates/${candidateId}` : `/api/trips/${TRIP_ID}/booking-candidates`,
+      {
+        method: candidateId ? "PATCH" : "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      errorEl.textContent = data.detail || "교통·숙박 후보 저장에 실패했습니다.";
+      return;
+    }
+    closeTravelBookingCandidateForm();
+    await loadTravelBookingCandidates();
+  } catch (error) {
+    console.error("교통·숙박 후보 저장 오류", error);
+    errorEl.textContent = "교통·숙박 후보 저장 중 네트워크 오류가 발생했습니다.";
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = originalText;
+  }
+}
+
+async function deleteTravelBookingCandidate(candidateId) {
+  const errorEl = document.getElementById("travel-booking-candidate-error");
+  try {
+    const res = await apiFetch(`/api/booking-candidates/${candidateId}`, { method: "DELETE" });
+    if (res.ok) {
+      errorEl.textContent = "";
+      await loadTravelBookingCandidates();
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    errorEl.textContent = data.detail || "후보 삭제에 실패했습니다.";
+  } catch (error) {
+    console.error("교통·숙박 후보 삭제 오류", error);
+    errorEl.textContent = "후보 삭제 중 네트워크 오류가 발생했습니다.";
+  }
+}
+
+function openItemFormFromBookingCandidate(candidate) {
+  closeTravelBookingCandidateForm();
+  openItemForm(null);
+  const form = document.getElementById("item-form");
+  const isTransport = candidate.kind === "transport";
+  const startAt = isTransport ? candidate.departure_at : candidate.check_in_at;
+  const endAt = isTransport
+    ? candidate.arrival_at
+    : (candidate.check_in_at ? addOneHourToDatetimeLocal(toDatetimeLocalValue(candidate.check_in_at)) : null);
+  const memoParts = [];
+  if (candidate.booking_url) memoParts.push(`예약 링크: ${candidate.booking_url}`);
+  if (candidate.provider_name) memoParts.push(`제공자: ${candidate.provider_name}`);
+  if (isTransport && candidate.service_number) memoParts.push(`편명·노선: ${candidate.service_number}`);
+  if (!isTransport && candidate.check_out_at) memoParts.push(`체크아웃: ${formatDateTime(candidate.check_out_at)}`);
+  if (candidate.price_amount !== null && candidate.price_amount !== undefined) {
+    memoParts.push(`가격(참고): ${formatTravelBookingPrice(candidate)}`);
+  }
+  if (candidate.memo) memoParts.push(candidate.memo);
+
+  form.title.value = candidate.title || (candidate.accommodation_name ? `${candidate.accommodation_name} 체크인` : "");
+  form.category.value = isTransport ? "transportation" : "accommodation";
+  form.status.value = "planned";
+  form.start_at.value = toDatetimeLocalValue(startAt);
+  form.end_at.value = endAt ? toDatetimeLocalValue(endAt) : "";
+  form.location_name.value = isTransport
+    ? [candidate.departure_name, candidate.arrival_name].filter(Boolean).join(" → ")
+    : (candidate.accommodation_name || "");
+  form.memo.value = memoParts.join("\n\n");
+  form.latitude.value = "";
+  form.longitude.value = "";
+  form.place_candidate_id.value = "";
+  form.place_provider.value = "";
+  form.external_place_id.value = "";
+  itemEndAtManuallyEdited = true;
+}
+
+document.getElementById("travel-booking-candidate-add-btn").addEventListener("click", () => {
+  openTravelBookingCandidateForm();
+});
+document.getElementById("travel-booking-candidate-cancel-btn").addEventListener("click", closeTravelBookingCandidateForm);
+document.getElementById("travel-booking-candidate-form").addEventListener("submit", saveTravelBookingCandidate);
+document.querySelector("#travel-booking-candidate-form [name='kind']").addEventListener("change", () => {
+  syncTravelBookingCandidateFormKind();
+});
 
 async function updatePlaceCandidateMemo(candidateId, memo) {
   const res = await apiFetch(
@@ -3941,13 +4414,28 @@ document.getElementById("external-booking-kind").addEventListener("change", () =
   }
 
   toggleExternalBookingFields();
+  if (currentReservationAnalysisSource === "url") {
+    setReservationAnalysisCandidateSaveResult(
+      buildReservationAnalysisResultFromExternalBookingForm(document.getElementById("external-booking-form")),
+      "url",
+    );
+  }
 });
 
-document
-  .querySelector('#external-booking-form input[name="booking_url"]')
-  .addEventListener("change", () => {
-    applyExternalBookingHints();
-  });
+const externalBookingForm = document.getElementById("external-booking-form");
+const externalBookingUrlInput = externalBookingForm.querySelector('input[name="booking_url"]');
+externalBookingUrlInput.addEventListener("input", () => {
+  resetReservationAnalysisCandidateSaveState();
+});
+externalBookingUrlInput.addEventListener("change", applyExternalBookingHints);
+externalBookingForm.addEventListener("input", (event) => {
+  if (event.target !== externalBookingUrlInput && currentReservationAnalysisSource === "url") {
+    setReservationAnalysisCandidateSaveResult(
+      buildReservationAnalysisResultFromExternalBookingForm(externalBookingForm),
+      "url",
+    );
+  }
+});
 
 document
   .querySelector('#external-booking-form input[name="checkin_at"]')
@@ -4265,6 +4753,177 @@ if (aiItineraryRouteBtn) {
   });
 }
 
+function normalizeReservationCandidateValue(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return value.trim() || null;
+  }
+  return value;
+}
+
+function buildBookingCandidatePayloadFromReservationAnalysis(result) {
+  if (!result || typeof result !== "object") {
+    return null;
+  }
+
+  const kind = normalizeReservationCandidateValue(result.kind);
+  const payload = {
+    kind,
+    title: normalizeReservationCandidateValue(result.title),
+    provider_name: normalizeReservationCandidateValue(result.provider_name),
+    booking_url: normalizeReservationCandidateValue(result.booking_url),
+    price_amount: typeof result.price_amount === "number" && Number.isFinite(result.price_amount)
+      ? result.price_amount
+      : null,
+    currency: normalizeReservationCandidateValue(result.currency),
+    memo: normalizeReservationCandidateValue(result.memo),
+    transport_mode: null,
+    service_number: null,
+    departure_name: null,
+    arrival_name: null,
+    departure_at: null,
+    arrival_at: null,
+    accommodation_name: null,
+    check_in_at: null,
+    check_out_at: null,
+  };
+
+  if (kind === "transport") {
+    payload.transport_mode = normalizeReservationCandidateValue(result.transport_mode);
+    payload.service_number = normalizeReservationCandidateValue(result.service_number);
+    payload.departure_name = normalizeReservationCandidateValue(result.departure_name);
+    payload.arrival_name = normalizeReservationCandidateValue(result.arrival_name);
+    payload.departure_at = normalizeReservationCandidateValue(result.departure_at);
+    payload.arrival_at = normalizeReservationCandidateValue(result.arrival_at);
+  } else if (kind === "accommodation") {
+    payload.accommodation_name = normalizeReservationCandidateValue(result.accommodation_name);
+    payload.check_in_at = normalizeReservationCandidateValue(result.check_in_at ?? result.checkin_at);
+    payload.check_out_at = normalizeReservationCandidateValue(result.check_out_at ?? result.checkout_at);
+  }
+
+  return payload;
+}
+
+function clearReservationAnalysisCandidateSaveMessages() {
+  const successEl = document.getElementById("reservation-analysis-save-candidate-success");
+  const errorEl = document.getElementById("reservation-analysis-save-candidate-error");
+  successEl.textContent = "";
+  successEl.style.display = "none";
+  errorEl.textContent = "";
+  errorEl.style.display = "none";
+}
+
+function updateReservationAnalysisCandidateSaveVisibility() {
+  const actionsEl = document.getElementById("reservation-analysis-candidate-save-actions");
+  const button = document.getElementById("reservation-analysis-save-candidate-btn");
+  const payload = buildBookingCandidatePayloadFromReservationAnalysis(currentReservationAnalysisResult);
+  const canSave = (currentRole === "owner" || currentRole === "editor") && Boolean(
+    payload && (
+      (payload.kind === "transport" && payload.title && payload.transport_mode) ||
+      (payload.kind === "accommodation" && payload.title && payload.accommodation_name)
+    ),
+  );
+
+  actionsEl.style.display = canSave ? "block" : "none";
+  button.style.display = canSave ? "inline-flex" : "none";
+  if (!canSave) {
+    clearReservationAnalysisCandidateSaveMessages();
+  }
+}
+
+function resetReservationAnalysisCandidateSaveState() {
+  currentReservationAnalysisResult = null;
+  currentReservationAnalysisSource = null;
+  clearReservationAnalysisCandidateSaveMessages();
+  updateReservationAnalysisCandidateSaveVisibility();
+}
+
+function setReservationAnalysisCandidateSaveResult(result, source) {
+  currentReservationAnalysisResult = result && typeof result === "object" ? result : null;
+  currentReservationAnalysisSource = currentReservationAnalysisResult ? source : null;
+  clearReservationAnalysisCandidateSaveMessages();
+  updateReservationAnalysisCandidateSaveVisibility();
+}
+
+function formatReservationCandidateApiDetail(detail) {
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    return detail.map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") return item.msg || item.detail || JSON.stringify(item);
+      return String(item);
+    }).join("\n");
+  }
+  if (detail && typeof detail === "object") {
+    return detail.message || detail.msg || JSON.stringify(detail);
+  }
+  return "후보 보관함에 저장하지 못했습니다.";
+}
+
+async function saveReservationAnalysisAsCandidate() {
+  const button = document.getElementById("reservation-analysis-save-candidate-btn");
+  const successEl = document.getElementById("reservation-analysis-save-candidate-success");
+  const errorEl = document.getElementById("reservation-analysis-save-candidate-error");
+  clearReservationAnalysisCandidateSaveMessages();
+
+  if (!currentReservationAnalysisResult) {
+    errorEl.textContent = "먼저 예약 정보를 분석하세요.";
+    errorEl.style.display = "block";
+    return;
+  }
+  if (currentRole !== "owner" && currentRole !== "editor") {
+    resetReservationAnalysisCandidateSaveState();
+    return;
+  }
+
+  const payload = buildBookingCandidatePayloadFromReservationAnalysis(currentReservationAnalysisResult);
+  if (!payload || !["transport", "accommodation"].includes(payload.kind)) {
+    updateReservationAnalysisCandidateSaveVisibility();
+    return;
+  }
+  if (payload.kind === "transport" && (!payload.title || !payload.transport_mode)) {
+    errorEl.textContent = "교통 후보는 제목과 교통수단이 필요합니다.";
+    errorEl.style.display = "block";
+    return;
+  }
+  if (payload.kind === "accommodation" && (!payload.title || !payload.accommodation_name)) {
+    errorEl.textContent = "숙박 후보는 제목과 숙소명이 필요합니다.";
+    errorEl.style.display = "block";
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "저장 중...";
+  try {
+    const res = await apiFetch(`/api/trips/${TRIP_ID}/booking-candidates`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      errorEl.textContent = formatReservationCandidateApiDetail(data.detail);
+      errorEl.style.display = "block";
+      return;
+    }
+    successEl.textContent = "후보 보관함에 저장했습니다.";
+    successEl.style.display = "block";
+    await loadTravelBookingCandidates();
+  } catch (error) {
+    console.error("예약 분석 후보 저장 오류", error);
+    errorEl.textContent = "후보 보관함 저장 중 네트워크 오류가 발생했습니다.";
+    errorEl.style.display = "block";
+  } finally {
+    button.disabled = false;
+    button.textContent = "후보 보관함에 저장";
+  }
+}
+
+document.getElementById("reservation-analysis-save-candidate-btn").addEventListener("click", saveReservationAnalysisAsCandidate);
+
 const reservationImageFileInput = document.getElementById("reservation-image-file");
 const reservationImageFilenameEl = document.getElementById("reservation-image-filename");
 const reservationImageForm = document.getElementById("reservation-image-form");
@@ -4307,6 +4966,7 @@ if (reservationImageForm) {
   reservationImageForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
+    resetReservationAnalysisCandidateSaveState();
     reservationImageErrorEl.textContent = "";
     reservationImageSuccessEl.style.display = "none";
     reservationImageSuccessEl.textContent = "";
@@ -4360,6 +5020,7 @@ if (reservationImageForm) {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
+        resetReservationAnalysisCandidateSaveState();
         reservationImageErrorEl.textContent = data.detail || "스크린샷 분석에 실패했습니다.";
         return;
       }
@@ -4385,6 +5046,7 @@ if (reservationImageForm) {
         externalPanel.scrollIntoView({ behavior: "smooth" });
       }
     } catch (err) {
+      resetReservationAnalysisCandidateSaveState();
       reservationImageErrorEl.textContent = "스크린샷 분석 중 네트워크 오류가 발생했습니다.";
     } finally {
       reservationImageSubmitBtn.disabled = false;
@@ -4398,6 +5060,10 @@ function applyReservationAnalysisResult(result, inputBookingUrl) {
   if (!form) return;
 
   const targetBookingUrl = result.booking_url || inputBookingUrl || "";
+  setReservationAnalysisCandidateSaveResult(
+    { ...result, booking_url: targetBookingUrl || null },
+    "image",
+  );
   if (targetBookingUrl) {
     form.booking_url.value = targetBookingUrl;
   }
@@ -4478,6 +5144,7 @@ requireLogin().then(async (user) => {
   await Promise.all([
     loadItineraries(),
     loadPlaceCandidates(),
+    loadTravelBookingCandidates(),
   ]);
 
   try {
