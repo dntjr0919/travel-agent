@@ -9,7 +9,11 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/trips">Travel Planner</a>
-    <nav>
+    <nav class="topbar-nav" aria-label="주요 메뉴">
+      <div class="nav-guest-links">
+        <a href="/login">로그인</a>
+        <a href="/register">회원가입</a>
+      </div>
       <span id="nav-user" class="nav-user"></span>
       <button id="nav-logout" class="link-button" style="display:none">로그아웃</button>
     </nav>

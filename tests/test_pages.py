@@ -46,6 +46,17 @@ def test_auth_pages_preserve_forms_fields_and_navigation(client):
             assert expected in res.text
 
 
+def test_base_navigation_preserves_brand_and_logout_contract(client):
+    res = client.get("/login")
+
+    assert res.status_code == 200
+    assert 'class="brand" href="/trips"' in res.text
+    assert 'href="/login">로그인</a>' in res.text
+    assert 'href="/register">회원가입</a>' in res.text
+    assert 'id="nav-user" class="nav-user"' in res.text
+    assert '<button id="nav-logout" class="link-button" style="display:none">로그아웃</button>' in res.text
+
+
 def test_trip_detail_redirects_to_login_when_not_authenticated(client):
     res = client.get("/trips/1", follow_redirects=False)
 
