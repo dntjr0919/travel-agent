@@ -146,6 +146,24 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'id="trip-tools-panel-places"' in text
     assert 'id="trip-tools-panel-ai"' in text
     assert 'id="trip-tools-panel-reservations"' in text
+    assert 'id="ai-draft-accordion-toggle"' in text
+    assert 'aria-controls="ai-draft-accordion-content"' in text
+    assert 'id="ai-draft-accordion-content" class="tool-accordion-content" hidden' in text
+    assert 'id="external-llm-accordion-toggle"' in text
+    assert 'aria-controls="external-llm-accordion-content"' in text
+    assert 'id="external-llm-accordion-content" class="tool-accordion-content" hidden' in text
+    assert 'id="reservation-transport-accordion-toggle"' in text
+    assert 'id="reservation-transport-accordion-content" class="tool-accordion-content" hidden' in text
+    assert 'id="reservation-accommodation-accordion-toggle"' in text
+    assert 'id="reservation-accommodation-accordion-content" class="tool-accordion-content" hidden' in text
+    for interest in ("culture", "cafe", "nature", "shopping", "food", "night_view"):
+        assert f'name="interests" value="{interest}"' in text
+    assert 'id="external-llm-selection-count"' in text
+    assert 'id="external-llm-select-all-btn"' in text
+    assert 'id="external-llm-deselect-all-btn"' in text
+    assert 'id="place-search-pagination"' in text
+    assert 'id="place-search-prev-btn"' in text
+    assert 'id="place-search-next-btn"' in text
     assert 'class="reservation-tool-section reservation-import-section"' in text
     assert 'id="reservation-import-heading"' in text
     assert 'id="reservation-image-form"' in text

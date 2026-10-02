@@ -225,6 +225,21 @@
   </div>
 
   <div id="trip-tools-panel-reservations" class="trip-tools-panel">
+<section id="travel-booking-candidate-panel" class="card reservation-tool-section reservation-candidates-section" aria-labelledby="travel-booking-candidate-heading" style="display:none">
+  <div class="tool-accordion-list" data-tool-accordion-group="reservations">
+    <section class="tool-accordion-item">
+      <button
+        id="reservation-transport-accordion-toggle"
+        class="tool-accordion-toggle"
+        type="button"
+        data-tool-accordion-trigger="transport"
+        aria-expanded="false"
+        aria-controls="reservation-transport-accordion-content"
+      >
+        <span>교통편 예약 관리</span>
+        <span class="tool-accordion-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div id="reservation-transport-accordion-content" class="tool-accordion-content" hidden>
 <section class="reservation-tool-section reservation-import-section" aria-labelledby="reservation-import-heading">
   <div class="reservation-section-heading">
     <div>
@@ -417,7 +432,6 @@
 </section>
 </section>
 
-  <section id="travel-booking-candidate-panel" class="card reservation-tool-section reservation-candidates-section" aria-labelledby="travel-booking-candidate-heading" style="display:none">
     <div class="section-header reservation-section-heading">
       <div>
         <p class="tool-section-eyebrow">예약 후보</p>
@@ -516,6 +530,22 @@
       <div id="travel-booking-transport-list" class="travel-booking-candidate-list"></div>
       <p id="travel-booking-transport-empty" class="muted small">저장된 교통 후보가 없습니다.</p>
     </section>
+      <button type="button" class="tool-accordion-back secondary" data-tool-accordion-close="reservations">예약 도구 목록으로</button>
+      </div>
+    </section>
+    <section class="tool-accordion-item">
+      <button
+        id="reservation-accommodation-accordion-toggle"
+        class="tool-accordion-toggle"
+        type="button"
+        data-tool-accordion-trigger="accommodation"
+        aria-expanded="false"
+        aria-controls="reservation-accommodation-accordion-content"
+      >
+        <span>숙소 예약 관리</span>
+        <span class="tool-accordion-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div id="reservation-accommodation-accordion-content" class="tool-accordion-content" hidden>
     <section class="reservation-candidate-group" aria-labelledby="travel-booking-accommodation-heading">
       <div class="reservation-section-heading">
         <div>
@@ -527,12 +557,30 @@
       <div id="travel-booking-accommodation-list" class="travel-booking-candidate-list"></div>
       <p id="travel-booking-accommodation-empty" class="muted small">저장된 숙박 후보가 없습니다.</p>
     </section>
-  </section>
+        <button type="button" class="tool-accordion-back secondary" data-tool-accordion-close="reservations">예약 도구 목록으로</button>
+      </div>
+    </section>
+  </div>
+</section>
 
   </div>
 
   <div id="trip-tools-panel-ai" class="trip-tools-panel">
 <section id="ai-itinerary-panel" class="card" style="display:none">
+  <div class="tool-accordion-list" data-tool-accordion-group="ai">
+    <section class="tool-accordion-item">
+      <button
+        id="ai-draft-accordion-toggle"
+        class="tool-accordion-toggle"
+        type="button"
+        data-tool-accordion-trigger="draft"
+        aria-expanded="false"
+        aria-controls="ai-draft-accordion-content"
+      >
+        <span>AI 여행 초안 만들기</span>
+        <span class="tool-accordion-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div id="ai-draft-accordion-content" class="tool-accordion-content" hidden>
   <div class="section-header">
     <div>
       <h2>해외 AI 여행 코스 초안</h2>
@@ -557,13 +605,13 @@
 
     <fieldset>
       <legend>관심사 (최대 6개)</legend>
-      <div class="form-grid-2">
-        <label><input type="checkbox" name="interests" value="culture" /> 문화</label>
-        <label><input type="checkbox" name="interests" value="cafe" /> 카페</label>
-        <label><input type="checkbox" name="interests" value="nature" /> 자연</label>
-        <label><input type="checkbox" name="interests" value="shopping" /> 쇼핑</label>
-        <label><input type="checkbox" name="interests" value="food" /> 음식</label>
-        <label><input type="checkbox" name="interests" value="night_view" /> 야경</label>
+      <div class="form-grid-2 ai-interest-grid">
+        <label class="ai-interest-chip"><input type="checkbox" name="interests" value="culture" /><span>문화</span></label>
+        <label class="ai-interest-chip"><input type="checkbox" name="interests" value="cafe" /><span>카페</span></label>
+        <label class="ai-interest-chip"><input type="checkbox" name="interests" value="nature" /><span>자연</span></label>
+        <label class="ai-interest-chip"><input type="checkbox" name="interests" value="shopping" /><span>쇼핑</span></label>
+        <label class="ai-interest-chip"><input type="checkbox" name="interests" value="food" /><span>음식</span></label>
+        <label class="ai-interest-chip"><input type="checkbox" name="interests" value="night_view" /><span>야경</span></label>
       </div>
     </fieldset>
 
@@ -602,7 +650,23 @@
   <div id="ai-itinerary-route-loading" class="muted small" style="display:none; margin-top: 0.5rem;">도보 동선을 계산하는 중...</div>
   <p id="ai-itinerary-route-error" class="error-text"></p>
   <div id="ai-itinerary-result" style="display:none; margin-top: 0.75rem;"></div>
+        <button type="button" class="tool-accordion-back secondary" data-tool-accordion-close="ai">AI 도구 목록으로</button>
+      </div>
+    </section>
 
+    <section class="tool-accordion-item">
+      <button
+        id="external-llm-accordion-toggle"
+        class="tool-accordion-toggle"
+        type="button"
+        data-tool-accordion-trigger="external-llm"
+        aria-expanded="false"
+        aria-controls="external-llm-accordion-content"
+      >
+        <span>외부 LLM JSON 일정 가져오기</span>
+        <span class="tool-accordion-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div id="external-llm-accordion-content" class="tool-accordion-content" hidden>
   <section id="external-llm-import" class="external-llm-import" aria-labelledby="external-llm-heading">
     <div class="external-llm-heading">
       <h3 id="external-llm-heading">외부 LLM 일정 초안 가져오기</h3>
@@ -624,8 +688,19 @@
       <button type="button" id="external-llm-import-btn" disabled>선택한 0개 일정 추가</button>
     </div>
     <p id="external-llm-feedback" class="external-llm-feedback" role="status" aria-live="polite"></p>
+    <div class="external-llm-selection-controls">
+      <span id="external-llm-selection-count" aria-live="polite">선택 0개</span>
+      <div class="external-llm-selection-actions">
+        <button type="button" id="external-llm-select-all-btn" class="secondary">전체 선택</button>
+        <button type="button" id="external-llm-deselect-all-btn" class="secondary">전체 해제</button>
+      </div>
+    </div>
     <div id="external-llm-results" class="external-llm-results" aria-live="polite"></div>
   </section>
+        <button type="button" class="tool-accordion-back secondary" data-tool-accordion-close="ai">AI 도구 목록으로</button>
+      </div>
+    </section>
+  </div>
 </section>
 
   </div>
@@ -671,6 +746,14 @@
   </div>
 
   <div id="place-search-results" class="place-search-results"></div>
+  <div id="place-search-pagination" class="place-search-pagination" hidden aria-label="장소 검색 결과 페이지">
+    <span id="place-search-range" aria-live="polite"></span>
+    <div class="place-search-pagination-controls">
+      <button type="button" id="place-search-prev-btn" class="secondary">이전</button>
+      <span id="place-search-page" aria-live="polite"></span>
+      <button type="button" id="place-search-next-btn" class="secondary">다음</button>
+    </div>
+  </div>
 </section>
 
 <section id="saved-place-candidates" class="card">
@@ -825,10 +908,15 @@ let travelMapMarkers = [];
 let itineraryMarkerById = new Map();
 let lastItineraryMarkerClickAt = 0;
 let itineraryCardHighlightTimer = null;
+let currentPlaceSearchResults = [];
+let currentPlaceSearchPage = 1;
+const PLACE_SEARCH_PAGE_SIZE = 5;
 let travelMapReady = false;
 let travelMapLoadFailed = false;
 let activeTravelMapTab = "itineraries";
 let activeToolsTab = "places";
+let activeAiAccordion = null;
+let activeReservationAccordion = null;
 let toolsDrawerCanEdit = false;
 let itineraryInteractionsInitialized = false;
 
@@ -1273,6 +1361,34 @@ function canEditPlaces() {
 
 function getAvailableToolsTabs() {
   return toolsDrawerCanEdit ? ["places", "ai", "reservations"] : ["places", "reservations"];
+}
+
+function setToolAccordion(groupName, itemName) {
+  const group = document.querySelector(`[data-tool-accordion-group="${groupName}"]`);
+  if (!group) {
+    return;
+  }
+
+  const activeItem = groupName === "ai" ? activeAiAccordion : activeReservationAccordion;
+  const nextItem = itemName === null ? null : (activeItem === itemName ? null : itemName);
+  if (groupName === "ai") {
+    activeAiAccordion = nextItem;
+  } else {
+    activeReservationAccordion = nextItem;
+  }
+
+  group.querySelectorAll("[data-tool-accordion-trigger]").forEach((button) => {
+    const expanded = button.dataset.toolAccordionTrigger === nextItem;
+    button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    const content = document.getElementById(button.getAttribute("aria-controls"));
+    if (content) {
+      content.hidden = !expanded;
+    }
+    const chevron = button.querySelector(".tool-accordion-chevron");
+    if (chevron) {
+      chevron.textContent = expanded ? "▴" : "▾";
+    }
+  });
 }
 
 function syncToolsPanelVisibility() {
@@ -2975,19 +3091,26 @@ function importExternalBookingToItemForm() {
 
 function renderPlaceSearchResults(results) {
   const resultsEl = document.getElementById("place-search-results");
+  currentPlaceSearchResults = Array.isArray(results) ? results : [];
+  const paginationEl = document.getElementById("place-search-pagination");
 
-  if (!results || results.length === 0) {
+  if (currentPlaceSearchResults.length === 0) {
     resultsEl.innerHTML = `
       <p class="empty-state">
         검색 결과가 없습니다. 다른 검색어를 입력해 보세요.
       </p>
     `;
+    paginationEl.hidden = true;
     return;
   }
 
+  const totalPages = Math.ceil(currentPlaceSearchResults.length / PLACE_SEARCH_PAGE_SIZE);
+  currentPlaceSearchPage = Math.min(Math.max(currentPlaceSearchPage, 1), totalPages);
+  const startIndex = (currentPlaceSearchPage - 1) * PLACE_SEARCH_PAGE_SIZE;
+  const visibleResults = currentPlaceSearchResults.slice(startIndex, startIndex + PLACE_SEARCH_PAGE_SIZE);
   const canEdit = canEditPlaces();
 
-  resultsEl.innerHTML = results.map((place) => `
+  resultsEl.innerHTML = visibleResults.map((place) => `
     <article class="place-result-card">
       <div class="place-result-main">
         <h3>${escapeHtml(place.name)}</h3>
@@ -3041,6 +3164,18 @@ function renderPlaceSearchResults(results) {
       });
     });
   }
+
+  if (currentPlaceSearchResults.length <= PLACE_SEARCH_PAGE_SIZE) {
+    paginationEl.hidden = true;
+    return;
+  }
+
+  paginationEl.hidden = false;
+  document.getElementById("place-search-range").textContent =
+    `${startIndex + 1}–${Math.min(startIndex + PLACE_SEARCH_PAGE_SIZE, currentPlaceSearchResults.length)} / 총 ${currentPlaceSearchResults.length}개`;
+  document.getElementById("place-search-page").textContent = `${currentPlaceSearchPage} / ${totalPages}`;
+  document.getElementById("place-search-prev-btn").disabled = currentPlaceSearchPage === 1;
+  document.getElementById("place-search-next-btn").disabled = currentPlaceSearchPage === totalPages;
 }
 
 async function searchPlaces(scope, query) {
@@ -3050,6 +3185,9 @@ async function searchPlaces(scope, query) {
 
   errorEl.textContent = "";
   resultsEl.innerHTML = "";
+  currentPlaceSearchResults = [];
+  currentPlaceSearchPage = 1;
+  document.getElementById("place-search-pagination").hidden = true;
   loadingEl.style.display = "block";
 
   try {
@@ -4491,6 +4629,19 @@ document.getElementById("place-search-form").addEventListener("submit", async (e
   await searchPlaces(scope, query);
 });
 
+document.getElementById("place-search-prev-btn").addEventListener("click", () => {
+  if (currentPlaceSearchPage <= 1) return;
+  currentPlaceSearchPage -= 1;
+  renderPlaceSearchResults(currentPlaceSearchResults);
+});
+
+document.getElementById("place-search-next-btn").addEventListener("click", () => {
+  const totalPages = Math.ceil(currentPlaceSearchResults.length / PLACE_SEARCH_PAGE_SIZE);
+  if (currentPlaceSearchPage >= totalPages) return;
+  currentPlaceSearchPage += 1;
+  renderPlaceSearchResults(currentPlaceSearchResults);
+});
+
 document.getElementById("external-booking-kind").addEventListener("change", () => {
   if (document.getElementById("external-booking-kind").value !== "accommodation") {
     externalAccommodationCheckoutManuallyEdited = false;
@@ -4570,6 +4721,19 @@ const itineraryRouteBtn = document.getElementById("itinerary-route-btn");
 
 document.getElementById("close-tools-btn")?.addEventListener("click", closeToolsDrawer);
 document.getElementById("trip-tools-backdrop")?.addEventListener("click", closeToolsDrawer);
+
+document.querySelectorAll("[data-tool-accordion-trigger]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const group = button.closest("[data-tool-accordion-group]");
+    setToolAccordion(group?.dataset.toolAccordionGroup, button.dataset.toolAccordionTrigger);
+  });
+});
+
+document.querySelectorAll("[data-tool-accordion-close]").forEach((button) => {
+  button.addEventListener("click", () => {
+    setToolAccordion(button.dataset.toolAccordionClose, null);
+  });
+});
 
 document.querySelectorAll("[data-tools-tab]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -5216,6 +5380,7 @@ const externalLlmPromptInput = document.getElementById("external-llm-prompt");
 const externalLlmAnalyzeButton = document.getElementById("external-llm-analyze-btn");
 const externalLlmImportButton = document.getElementById("external-llm-import-btn");
 const externalLlmResults = document.getElementById("external-llm-results");
+const externalLlmSelectionCount = document.getElementById("external-llm-selection-count");
 const externalLlmFeedback = document.getElementById("external-llm-feedback");
 let externalLlmAnalysisItems = [];
 let externalLlmAnalyzedRawJson = "";
@@ -5249,9 +5414,17 @@ function buildExternalLlmPrompt() {
 }
 
 function updateExternalLlmImportButton() {
-  const selectedCount = externalLlmResults.querySelectorAll("input[type=checkbox]:checked:not(:disabled)").length;
+  const selectedCount = externalLlmResults.querySelectorAll("input[type=checkbox]:checked").length;
+  externalLlmSelectionCount.textContent = `선택 ${selectedCount}개`;
   externalLlmImportButton.textContent = `선택한 ${selectedCount}개 일정 추가`;
   externalLlmImportButton.disabled = selectedCount === 0;
+}
+
+function setAllExternalLlmItemsSelected(selected) {
+  externalLlmResults.querySelectorAll("input[type=checkbox]:not(:disabled)").forEach((checkbox) => {
+    checkbox.checked = selected;
+  });
+  updateExternalLlmImportButton();
 }
 
 function clearExternalLlmAnalysis() {
@@ -5404,6 +5577,12 @@ async function importExternalLlmDraft() {
 document.getElementById("external-llm-copy-prompt-btn").addEventListener("click", copyExternalLlmPrompt);
 externalLlmAnalyzeButton.addEventListener("click", analyzeExternalLlmDraft);
 externalLlmImportButton.addEventListener("click", importExternalLlmDraft);
+document.getElementById("external-llm-select-all-btn").addEventListener("click", () => {
+  setAllExternalLlmItemsSelected(true);
+});
+document.getElementById("external-llm-deselect-all-btn").addEventListener("click", () => {
+  setAllExternalLlmItemsSelected(false);
+});
 externalLlmJsonInput.addEventListener("input", () => {
   clearExternalLlmAnalysis();
   setExternalLlmFeedback("");
