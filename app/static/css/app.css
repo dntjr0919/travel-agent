@@ -84,6 +84,7 @@ body {
 .form-actions {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 button, .button {
@@ -96,6 +97,7 @@ button, .button {
   font-size: 0.95rem;
   text-decoration: none;
   display: inline-block;
+  min-height: 40px;
 }
 
 button:hover, .button:hover {
@@ -133,6 +135,110 @@ button.secondary, .button.secondary {
 .header-actions {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.trip-header-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.trip-header-info {
+  min-width: 0;
+}
+
+.trip-header-info h1,
+.trip-header-info p {
+  overflow-wrap: anywhere;
+}
+
+#trip-header.page-header {
+  display: block;
+}
+
+#trip-header .trip-header-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+#trip-header .trip-header-info {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+#trip-header .trip-tools-toggle {
+  flex: 0 0 auto;
+}
+
+#trip-header .header-actions {
+  display: flex;
+  width: 100%;
+  margin-top: 0.75rem;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.trip-tools-toggle {
+  min-width: 40px;
+  min-height: 40px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.trip-tools-toggle:hover {
+  background: #eef3ff;
+  color: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+}
+
+.trip-tools-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.sidebar-toggle-icon {
+  width: 18px;
+  height: 14px;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.sidebar-toggle-lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.sidebar-toggle-lines span {
+  height: 2px;
+  width: 100%;
+  background: currentColor;
+  border-radius: 2px;
+}
+
+.sidebar-toggle-rail {
+  width: 4px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.95;
 }
 
 .muted { color: var(--color-muted); }
@@ -185,6 +291,220 @@ button.secondary, .button.secondary {
   align-items: flex-start;
   min-width: 0;
   overflow: hidden;
+}
+
+.trip-schedule-card .item-card {
+  padding: 0.65rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  min-width: 0;
+  overflow: visible;
+}
+
+.trip-schedule-card .item-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.45rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.trip-schedule-card .item-summary {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 0.85rem;
+  cursor: pointer;
+}
+
+.trip-schedule-card .item-summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.trip-schedule-card .item-time {
+  color: var(--color-primary-dark);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.35;
+  padding-top: 0.2rem;
+  white-space: nowrap;
+}
+
+.trip-schedule-card .item-summary-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.trip-schedule-card .item-title {
+  min-width: 0;
+  font-size: 1rem;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  word-break: keep-all;
+}
+
+.trip-schedule-card .item-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.35rem;
+  overflow-wrap: normal;
+}
+
+.trip-schedule-card .item-badges .badge {
+  white-space: nowrap;
+}
+
+.trip-schedule-card .item-meta,
+.trip-schedule-card .item-location,
+.trip-schedule-card .item-note,
+.trip-schedule-card .item-updated {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.trip-schedule-card .item-location,
+.trip-schedule-card .item-note {
+  line-height: 1.45;
+}
+
+.trip-schedule-card .item-updated {
+  color: var(--color-muted);
+}
+
+.trip-schedule-card .item-details {
+  width: 100%;
+  margin-top: 0.55rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.trip-schedule-card .item-details[hidden] {
+  display: none;
+}
+
+.trip-schedule-card .item-menu-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.trip-schedule-card .item-menu-trigger {
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  font-size: 1.15rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trip-schedule-card .item-action-menu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  min-width: 116px;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+  padding: 0.35rem;
+  z-index: 15;
+}
+
+.trip-schedule-card .item-action-menu button {
+  width: 100%;
+  background: transparent;
+  color: var(--color-text);
+  border: 0;
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  min-height: 40px;
+}
+
+.trip-schedule-card .item-action-menu button:hover {
+  background: var(--color-bg);
+}
+
+.trip-schedule-card .item-action-menu .delete-btn {
+  color: var(--color-danger);
+}
+
+.trip-tools-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.trip-tools-tab {
+  flex: 1 1 110px;
+  min-height: 40px;
+  background: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+}
+
+.trip-tools-tab.is-active {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.trip-tools-panel {
+  display: none;
+}
+
+.trip-tools-panel.is-active {
+  display: block;
+}
+
+.travel-map-control-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.travel-map-control-group > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
+.travel-map-control-group select {
+  min-width: 170px;
+}
+
+.travel-map-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.travel-map-tab {
+  flex: 1 1 110px;
+  min-height: 40px;
 }
 
 .item-main {
@@ -633,6 +953,101 @@ body.tools-drawer-open {
 }
 
 @media (max-width: 760px) {
+  .container {
+    padding: 1rem;
+  }
+
+  .topbar {
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .page-header {
+    gap: 0.75rem;
+  }
+
+  #trip-header .trip-header-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  #trip-header .trip-header-info {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .header-actions,
+  .form-actions,
+  .travel-map-tabs,
+  .trip-tools-tabs {
+    gap: 0.45rem;
+  }
+
+  #trip-header .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .header-actions button,
+  .header-actions .button,
+  .trip-tools-toggle,
+  .form-actions button,
+  .form-actions .button,
+  .trip-mobile-tab,
+  .travel-map-tab,
+  .trip-tools-tab {
+    min-height: 40px;
+  }
+
+  .trip-tools-toggle {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 auto;
+  }
+
+  .trip-schedule-card .item-card {
+    padding: 0.6rem 0.7rem;
+  }
+
+  .trip-schedule-card .item-card-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: flex-start;
+  }
+
+  .trip-schedule-card .item-summary {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+
+  .trip-schedule-card .item-time {
+    padding-top: 0;
+  }
+
+  .trip-schedule-card .item-menu-wrap {
+    margin-top: -0.1rem;
+  }
+
+  .trip-schedule-card .item-menu-trigger {
+    min-width: 42px;
+    min-height: 42px;
+  }
+
+  .trip-schedule-card .item-action-menu {
+    right: 0;
+    min-width: 126px;
+  }
+
+  .travel-map-control-group {
+    width: 100%;
+  }
+
+  .travel-map-control-group select {
+    width: 100%;
+  }
+
   .trip-main-layout {
     grid-template-columns: 1fr;
   }

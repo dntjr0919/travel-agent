@@ -34,6 +34,19 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'id="saved-candidates-map-filter"' in text
     assert 'id="trip-tools-drawer"' in text
     assert 'id="trip-tools-backdrop"' in text
+    assert 'id="trip-tools-tabs"' in text
+    assert 'id="open-tools-btn"' in text
+    assert 'class="trip-tools-toggle"' in text
+    assert 'class="sidebar-toggle-icon"' in text
+    assert 'class="trip-header-main"' in text
+    assert 'class="trip-header-info"' in text
+    assert 'aria-controls="trip-tools-drawer"' in text
+    assert 'id="trip-tools-tab-places"' in text
+    assert 'id="trip-tools-tab-ai"' in text
+    assert 'id="trip-tools-tab-reservations"' in text
+    assert 'id="trip-tools-panel-places"' in text
+    assert 'id="trip-tools-panel-ai"' in text
+    assert 'id="trip-tools-panel-reservations"' in text
     assert 'id="trip-mobile-tabs"' in text
     assert 'id="trip-mobile-tab-schedule"' in text
     assert 'id="trip-mobile-tab-map"' in text
@@ -43,6 +56,14 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'id="item-place-search-panel"' in text
     assert 'id="item-place-search-query"' in text
     assert 'id="item-place-search-results"' in text
+    assert 'id="travel-map-itinerary-controls"' in text
+    assert 'id="travel-map-candidate-controls"' in text
+    assert 'id="travel-map-ai-controls"' in text
+    assert 'class="item-summary"' in text
+    assert 'class="item-details"' in text
+    assert 'class="item-menu-trigger' in text
+    assert 'class="item-action-menu"' in text
+    assert 'aria-expanded="false"' in text
     assert 'id="ai-itinerary-map"' not in text
     assert 'id="saved-candidates-map"' not in text
 

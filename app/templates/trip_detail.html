@@ -3,9 +3,6 @@
 {% block content %}
 <div class="trip-detail-container">
 <div id="trip-header" class="page-header"></div>
-<div class="form-actions" style="margin-bottom: 0.75rem;">
-  <button id="open-tools-btn" type="button" class="button secondary">도구</button>
-</div>
 <div id="trip-edit-panel" class="card" style="display:none">
   <h2>여행 정보 수정</h2>
 
@@ -165,6 +162,47 @@
     <h2>여행 도구</h2>
     <button id="close-tools-btn" type="button" class="secondary">닫기</button>
   </div>
+  <div
+    id="trip-tools-tabs"
+    class="trip-tools-tabs"
+    role="tablist"
+    aria-label="여행 도구 탭"
+  >
+    <button
+      id="trip-tools-tab-places"
+      class="trip-tools-tab is-active"
+      type="button"
+      data-tools-tab="places"
+      role="tab"
+      aria-selected="true"
+    >
+      장소
+    </button>
+
+    <button
+      id="trip-tools-tab-ai"
+      class="trip-tools-tab"
+      type="button"
+      data-tools-tab="ai"
+      role="tab"
+      aria-selected="false"
+    >
+      AI
+    </button>
+
+    <button
+      id="trip-tools-tab-reservations"
+      class="trip-tools-tab"
+      type="button"
+      data-tools-tab="reservations"
+      role="tab"
+      aria-selected="false"
+    >
+      예약
+    </button>
+  </div>
+
+  <div id="trip-tools-panel-reservations" class="trip-tools-panel">
 <section id="reservation-image-panel" class="card" style="display:none">
   <div class="section-header">
     <div>
@@ -340,6 +378,9 @@
   <p id="external-booking-error" class="error-text"></p>
 </section>
 
+  </div>
+
+  <div id="trip-tools-panel-ai" class="trip-tools-panel">
 <section id="ai-itinerary-panel" class="card" style="display:none">
   <div class="section-header">
     <div>
@@ -412,6 +453,9 @@
   <div id="ai-itinerary-result" style="display:none; margin-top: 0.75rem;"></div>
 </section>
 
+  </div>
+
+  <div id="trip-tools-panel-places" class="trip-tools-panel is-active">
 <section id="place-candidate-panel" class="card">
   <div class="section-header">
     <div>
@@ -471,6 +515,8 @@
   </p>
 </section>
 
+  </div>
+
 </aside>
 
 <div class="trip-main-layout">
@@ -488,27 +534,33 @@
     </div>
 
     <div class="travel-map-controls">
-      <label id="travel-map-control-itineraries">
-        일정 날짜
-        <select id="travel-map-itinerary-date"></select>
-      </label>
+      <div id="travel-map-itinerary-controls" class="travel-map-control-group">
+        <label id="travel-map-control-itineraries">
+          일정 날짜
+          <select id="travel-map-itinerary-date"></select>
+        </label>
+      </div>
 
-      <label id="travel-map-control-candidates" style="display:none;">
-        후보 필터
-        <select id="saved-candidates-map-filter">
-          <option value="all">전체</option>
-          <option value="food">음식</option>
-          <option value="cafe">카페</option>
-          <option value="sightseeing">관광</option>
-          <option value="shopping">쇼핑</option>
-          <option value="other">기타</option>
-        </select>
-      </label>
+      <div id="travel-map-candidate-controls" class="travel-map-control-group" style="display:none;">
+        <label id="travel-map-control-candidates">
+          후보 필터
+          <select id="saved-candidates-map-filter">
+            <option value="all">전체</option>
+            <option value="food">음식</option>
+            <option value="cafe">카페</option>
+            <option value="sightseeing">관광</option>
+            <option value="shopping">쇼핑</option>
+            <option value="other">기타</option>
+          </select>
+        </label>
+      </div>
 
-      <label id="travel-map-control-ai" style="display:none;">
-        AI 날짜
-        <select id="ai-itinerary-map-date"></select>
-      </label>
+      <div id="travel-map-ai-controls" class="travel-map-control-group" style="display:none;">
+        <label id="travel-map-control-ai">
+          AI 날짜
+          <select id="ai-itinerary-map-date"></select>
+        </label>
+      </div>
     </div>
 
     <p id="travel-map-status" class="muted small travel-map-status"></p>
@@ -580,12 +632,39 @@ let travelMapMarkers = [];
 let travelMapReady = false;
 let travelMapLoadFailed = false;
 let activeTravelMapTab = "itineraries";
+let activeToolsTab = "places";
+let toolsDrawerCanEdit = false;
+let itineraryInteractionsInitialized = false;
 
 function toDatetimeLocalValue(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatTimeRange(startAt, endAt) {
+  const formatTime = (value) => {
+    if (!value) {
+      return "";
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+
+    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  };
+
+  const startText = formatTime(startAt);
+  if (!startText) {
+    return "시간 미정";
+  }
+
+  const endText = formatTime(endAt);
+  return endText ? `${startText} ~ ${endText}` : startText;
 }
 
 function fromDatetimeLocalValue(value) {
@@ -854,25 +933,48 @@ async function loadTrip() {
 function renderHeader() {
   const canEdit = currentRole === "owner" || currentRole === "editor";
   const isOwner = currentRole === "owner";
+  const isToolsDrawerOpen = document.getElementById("trip-tools-drawer")?.classList.contains("is-open") || false;
   document.getElementById("trip-header").innerHTML = `
-    <div>
-      <h1>${escapeHtml(currentTrip.title)}</h1>
-      <p class="muted">${escapeHtml(currentTrip.destination || "목적지 미정")}</p>
-      <p>${currentTrip.start_date} ~ ${currentTrip.end_date} (${escapeHtml(currentTrip.timezone)})</p>
+    <div class="trip-header-main">
+      <div class="trip-header-info">
+        <h1>${escapeHtml(currentTrip.title)}</h1>
+        <p class="muted">${escapeHtml(currentTrip.destination || "목적지 미정")}</p>
+        <p>${currentTrip.start_date} ~ ${currentTrip.end_date} (${escapeHtml(currentTrip.timezone)})</p>
+      </div>
+
+      <button
+        id="open-tools-btn"
+        type="button"
+        class="trip-tools-toggle"
+        aria-label="여행 도구 열기"
+        aria-controls="trip-tools-drawer"
+        aria-expanded="${isToolsDrawerOpen ? "true" : "false"}"
+        title="여행 도구 열기"
+      >
+        <span class="sidebar-toggle-icon" aria-hidden="true">
+          <span class="sidebar-toggle-lines">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+          <span class="sidebar-toggle-rail"></span>
+        </span>
+      </button>
     </div>
+
     <div class="header-actions">
-  ${isOwner
-    ? `<a class="button secondary" href="/trips/${TRIP_ID}/members">구성원 관리</a>`
-    : ""}
+      ${isOwner
+        ? `<a class="button secondary" href="/trips/${TRIP_ID}/members">구성원 관리</a>`
+        : ""}
 
-  ${isOwner
-    ? `<button id="edit-trip-btn" class="button secondary">여행 정보 수정</button>`
-    : ""}
+      ${isOwner
+        ? `<button id="edit-trip-btn" class="button secondary">여행 정보 수정</button>`
+        : ""}
 
-  ${canEdit
-    ? `<button id="add-item-btn" class="button">+ 일정 추가</button>`
-    : ""}
-</div>
+      ${canEdit
+        ? `<button id="add-item-btn" class="button">+ 일정 추가</button>`
+        : ""}
+    </div>
   `;
 if (isOwner) {
   document.getElementById("edit-trip-btn").addEventListener("click", openTripEditForm);
@@ -881,6 +983,8 @@ if (isOwner) {
 if (canEdit) {
   document.getElementById("add-item-btn").addEventListener("click", () => openItemForm(null));
 }
+
+  document.getElementById("open-tools-btn")?.addEventListener("click", openToolsDrawer);
 
   setExternalBookingPanelVisibility(canEdit);
   setAiItineraryPanelVisibility(canEdit);
@@ -961,6 +1065,88 @@ async function loadItineraries() {
 
 function canEditPlaces() {
   return currentRole === "owner" || currentRole === "editor";
+}
+
+function getAvailableToolsTabs() {
+  return toolsDrawerCanEdit ? ["places", "ai", "reservations"] : ["places"];
+}
+
+function syncToolsPanelVisibility() {
+  const placesTab = document.getElementById("trip-tools-panel-places");
+  const aiTab = document.getElementById("trip-tools-panel-ai");
+  const reservationsTab = document.getElementById("trip-tools-panel-reservations");
+  const aiPanel = document.getElementById("ai-itinerary-panel");
+  const reservationImagePanel = document.getElementById("reservation-image-panel");
+  const externalBookingPanel = document.getElementById("external-booking-panel");
+  const aiVisible = toolsDrawerCanEdit && activeToolsTab === "ai";
+  const reservationsVisible = toolsDrawerCanEdit && activeToolsTab === "reservations";
+  const placesVisible = activeToolsTab === "places";
+
+  if (placesTab) {
+    placesTab.style.display = placesVisible ? "block" : "none";
+    placesTab.classList.toggle("is-active", placesVisible);
+  }
+
+  if (aiTab) {
+    aiTab.style.display = aiVisible ? "block" : "none";
+    aiTab.classList.toggle("is-active", aiVisible);
+  }
+
+  if (reservationsTab) {
+    reservationsTab.style.display = reservationsVisible ? "block" : "none";
+    reservationsTab.classList.toggle("is-active", reservationsVisible);
+  }
+
+  if (aiPanel) {
+    aiPanel.style.display = aiVisible ? "block" : "none";
+  }
+
+  if (reservationImagePanel) {
+    reservationImagePanel.style.display = reservationsVisible ? "block" : "none";
+  }
+
+  if (externalBookingPanel) {
+    externalBookingPanel.style.display = reservationsVisible ? "block" : "none";
+  }
+
+  const tabButtons = {
+    places: document.getElementById("trip-tools-tab-places"),
+    ai: document.getElementById("trip-tools-tab-ai"),
+    reservations: document.getElementById("trip-tools-tab-reservations"),
+  };
+
+  for (const [tabName, button] of Object.entries(tabButtons)) {
+    if (!button) {
+      continue;
+    }
+
+    const isAvailable = getAvailableToolsTabs().includes(tabName);
+    button.style.display = isAvailable ? "inline-flex" : "none";
+    button.classList.toggle("is-active", tabName === activeToolsTab && isAvailable);
+    button.setAttribute("aria-selected", tabName === activeToolsTab && isAvailable ? "true" : "false");
+  }
+
+  const tabsBar = document.getElementById("trip-tools-tabs");
+  if (tabsBar) {
+    tabsBar.style.display = getAvailableToolsTabs().length > 0 ? "flex" : "none";
+  }
+}
+
+function setActiveToolsTab(tabName) {
+  const availableTabs = getAvailableToolsTabs();
+  const nextTab = availableTabs.includes(tabName) ? tabName : "places";
+  activeToolsTab = nextTab;
+  syncToolsPanelVisibility();
+}
+
+function setToolsDrawerPermissions(canEdit) {
+  toolsDrawerCanEdit = Boolean(canEdit);
+
+  if (!toolsDrawerCanEdit && activeToolsTab !== "places") {
+    activeToolsTab = "places";
+  }
+
+  syncToolsPanelVisibility();
 }
 
 function clearItemPlaceSearchStatus() {
@@ -1251,23 +1437,11 @@ async function searchItemPlaces(scope, query) {
 }
 
 function setExternalBookingPanelVisibility(canEdit) {
-  const imagePanel = document.getElementById("reservation-image-panel");
-  const panel = document.getElementById("external-booking-panel");
-  if (imagePanel) {
-    imagePanel.style.display = canEdit ? "block" : "none";
-  }
-  if (panel) {
-    panel.style.display = canEdit ? "block" : "none";
-  }
+  setToolsDrawerPermissions(canEdit);
 }
 
 function setAiItineraryPanelVisibility(canEdit) {
-  const panel = document.getElementById("ai-itinerary-panel");
-  if (!panel) {
-    return;
-  }
-
-  panel.style.display = canEdit ? "block" : "none";
+  setToolsDrawerPermissions(canEdit);
 
   if (!canEdit) {
     const errorEl = document.getElementById("ai-itinerary-error");
@@ -1496,17 +1670,18 @@ function buildAiDraftInfoWindowContent(place) {
 }
 
 function updateTravelMapControlsVisibility() {
-  const itineraryControl = document.getElementById("travel-map-control-itineraries");
-  const candidateControl = document.getElementById("travel-map-control-candidates");
-  const aiControl = document.getElementById("travel-map-control-ai");
+  const itineraryControl = document.getElementById("travel-map-itinerary-controls");
+  const candidateControl = document.getElementById("travel-map-candidate-controls");
+  const aiControl = document.getElementById("travel-map-ai-controls");
+  const hasAiDraft = Boolean(currentAiItineraryDraft && Array.isArray(currentAiItineraryDraft.days) && currentAiItineraryDraft.days.length > 0);
 
   if (!itineraryControl || !candidateControl || !aiControl) {
     return;
   }
 
-  itineraryControl.style.display = activeTravelMapTab === "itineraries" ? "inline-flex" : "none";
-  candidateControl.style.display = activeTravelMapTab === "candidates" ? "inline-flex" : "none";
-  aiControl.style.display = activeTravelMapTab === "ai" ? "inline-flex" : "none";
+  itineraryControl.style.display = activeTravelMapTab === "itineraries" ? "flex" : "none";
+  candidateControl.style.display = activeTravelMapTab === "candidates" ? "flex" : "none";
+  aiControl.style.display = activeTravelMapTab === "ai" && hasAiDraft ? "flex" : "none";
 }
 
 function updateTravelMapTabButtons() {
@@ -2692,10 +2867,209 @@ function groupByDate(items) {
   return groups;
 }
 
+function normalizeComparableText(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function setItemDetailsOpenState(card, isOpen) {
+  const summaryButton = card.querySelector(".item-summary");
+  const detailsEl = card.querySelector(".item-details");
+
+  if (!summaryButton || !detailsEl) {
+    return;
+  }
+
+  summaryButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  detailsEl.hidden = !isOpen;
+}
+
+function setItemActionMenuOpenState(card, isOpen) {
+  const trigger = card.querySelector(".item-menu-trigger");
+  const menu = card.querySelector(".item-action-menu");
+
+  if (!trigger || !menu) {
+    return;
+  }
+
+  trigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  menu.hidden = !isOpen;
+}
+
+function closeAllItemDetails(exceptItemId = null) {
+  const listEl = document.getElementById("itinerary-list");
+
+  if (!listEl) {
+    return;
+  }
+
+  listEl.querySelectorAll(".item-card").forEach((card) => {
+    const itemId = Number(card.dataset.id);
+    const shouldKeepOpen = Number.isFinite(itemId) && exceptItemId !== null && itemId === exceptItemId;
+    setItemDetailsOpenState(card, shouldKeepOpen);
+  });
+}
+
+function closeAllItemActionMenus(exceptItemId = null) {
+  const listEl = document.getElementById("itinerary-list");
+
+  if (!listEl) {
+    return;
+  }
+
+  listEl.querySelectorAll(".item-card").forEach((card) => {
+    const itemId = Number(card.dataset.id);
+    const shouldKeepOpen = Number.isFinite(itemId) && exceptItemId !== null && itemId === exceptItemId;
+    setItemActionMenuOpenState(card, shouldKeepOpen);
+  });
+}
+
+function toggleItemDetails(itemId) {
+  const listEl = document.getElementById("itinerary-list");
+
+  if (!listEl) {
+    return;
+  }
+
+  const card = listEl.querySelector(`.item-card[data-id="${itemId}"]`);
+
+  if (!card) {
+    return;
+  }
+
+  const summaryButton = card.querySelector(".item-summary");
+  const isOpen = summaryButton?.getAttribute("aria-expanded") === "true";
+
+  closeAllItemActionMenus();
+
+  if (isOpen) {
+    closeAllItemDetails();
+    return;
+  }
+
+  closeAllItemDetails(itemId);
+}
+
+function toggleItemActionMenu(itemId) {
+  const listEl = document.getElementById("itinerary-list");
+
+  if (!listEl) {
+    return;
+  }
+
+  const card = listEl.querySelector(`.item-card[data-id="${itemId}"]`);
+
+  if (!card) {
+    return;
+  }
+
+  const trigger = card.querySelector(".item-menu-trigger");
+  const isOpen = trigger?.getAttribute("aria-expanded") === "true";
+
+  closeAllItemDetails();
+
+  if (isOpen) {
+    closeAllItemActionMenus();
+    return;
+  }
+
+  closeAllItemActionMenus(itemId);
+}
+
+function initializeItineraryInteractions() {
+  if (itineraryInteractionsInitialized) {
+    return;
+  }
+
+  const listEl = document.getElementById("itinerary-list");
+
+  if (!listEl) {
+    return;
+  }
+
+  listEl.addEventListener("click", (event) => {
+    const target = event.target;
+
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const menuTrigger = target.closest(".item-menu-trigger");
+    if (menuTrigger) {
+      event.stopPropagation();
+      const card = menuTrigger.closest(".item-card");
+      const itemId = Number(card?.dataset.id);
+
+      if (Number.isFinite(itemId)) {
+        toggleItemActionMenu(itemId);
+      }
+
+      return;
+    }
+
+    const editButton = target.closest(".edit-btn");
+    if (editButton) {
+      event.stopPropagation();
+      const itemId = Number(editButton.dataset.id);
+      closeAllItemActionMenus();
+
+      if (Number.isFinite(itemId)) {
+        const item = currentItineraries.find((currentItem) => currentItem.id === itemId);
+        if (item) {
+          openItemForm(item);
+        }
+      }
+
+      return;
+    }
+
+    const deleteButton = target.closest(".delete-btn");
+    if (deleteButton) {
+      event.stopPropagation();
+      const itemId = Number(deleteButton.dataset.id);
+      closeAllItemActionMenus();
+
+      if (Number.isFinite(itemId)) {
+        deleteItem(itemId);
+      }
+
+      return;
+    }
+
+    const summaryButton = target.closest(".item-summary");
+    if (summaryButton) {
+      const card = summaryButton.closest(".item-card");
+      const itemId = Number(card?.dataset.id);
+
+      if (Number.isFinite(itemId)) {
+        toggleItemDetails(itemId);
+      }
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target;
+
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const clickedCard = target.closest(".item-card");
+    if (clickedCard && clickedCard.closest("#itinerary-list")) {
+      return;
+    }
+
+    closeAllItemActionMenus();
+    closeAllItemDetails();
+  });
+
+  itineraryInteractionsInitialized = true;
+}
+
 function renderItineraries(items) {
   const listEl = document.getElementById("itinerary-list");
   const emptyEl = document.getElementById("itinerary-empty");
   const canEdit = currentRole === "owner" || currentRole === "editor";
+  initializeItineraryInteractions();
   currentItineraries = Array.isArray(items) ? items : [];
   updateTravelMapItineraryDateOptions();
 
@@ -2717,76 +3091,78 @@ function renderItineraries(items) {
 
       <div class="item-list">
         ${groups[date].map((item) => `
-          <div class="item-card" data-id="${item.id}">
-            <div class="item-main">
-              <span class="badge category-${item.category}">
-  ${CATEGORY_LABELS[item.category] || item.category}
-</span>
+          <article class="item-card" data-id="${item.id}">
+            <div class="item-card-head">
+              <button
+                type="button"
+                class="item-summary"
+                aria-expanded="false"
+                aria-controls="item-details-${item.id}"
+              >
+                <span class="item-time">${escapeHtml(formatTimeRange(item.start_at, item.end_at))}</span>
 
-<span class="badge status-badge status-${item.status || "planned"}">
-  ${STATUS_LABELS[item.status] || STATUS_LABELS.planned}
-</span>
+                <span class="item-summary-main">
+                  <strong class="item-title">${escapeHtml(item.title)}</strong>
 
-              <strong>${escapeHtml(item.title)}</strong>
+                  <span class="item-meta item-badges">
+                    <span class="badge category-${item.category}">
+                      ${CATEGORY_LABELS[item.category] || item.category}
+                    </span>
 
-              <p class="muted">
-                ${item.start_at ? formatDateTime(item.start_at) : ""}
-                ${item.end_at ? ` ~ ${formatDateTime(item.end_at)}` : ""}
-              </p>
+                    <span class="badge status-badge status-${item.status || "planned"}">
+                      ${STATUS_LABELS[item.status] || STATUS_LABELS.planned}
+                    </span>
+                  </span>
+                </span>
+              </button>
 
-              ${item.location_name
-                ? `<p>📍 ${escapeHtml(item.location_name)}</p>`
+              ${canEdit
+                ? `
+                  <div class="item-menu-wrap">
+                    <button
+                      type="button"
+                      class="item-menu-trigger secondary"
+                      data-id="${item.id}"
+                      aria-label="일정 메뉴 열기"
+                      aria-haspopup="menu"
+                      aria-expanded="false"
+                    >
+                      ⋮
+                    </button>
+
+                    <div class="item-action-menu" role="menu" hidden>
+                      <button type="button" class="edit-btn" data-id="${item.id}" role="menuitem">
+                        수정
+                      </button>
+
+                      <button type="button" class="delete-btn" data-id="${item.id}" role="menuitem">
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+                `
                 : ""}
-
-              ${item.memo
-  ? `<p class="memo">${renderMemoWithMapLink(item.memo)}</p>`
-  : ""}
-
-              <p class="muted small">
-                최종 수정: ${escapeHtml(item.updated_by_name)}
-                · ${formatDateTime(item.updated_at)}
-              </p>
             </div>
 
-            ${canEdit
-              ? `
-                <div class="item-actions">
-                  <button class="edit-btn" data-id="${item.id}">
-                    수정
-                  </button>
+            <div id="item-details-${item.id}" class="item-details" hidden>
+                ${item.location_name && normalizeComparableText(item.location_name) !== normalizeComparableText(item.title)
+                  ? `<p class="item-meta item-location">📍 ${escapeHtml(item.location_name)}</p>`
+                  : ""}
 
-                  <button class="delete-btn secondary" data-id="${item.id}">
-                    삭제
-                  </button>
-                </div>
-              `
-              : ""}
-          </div>
+                ${item.memo
+                  ? `<p class="memo item-meta item-note">${renderMemoWithMapLink(item.memo)}</p>`
+                  : ""}
+
+                <p class="muted small item-meta item-updated">
+                  최종 수정: ${escapeHtml(item.updated_by_name)}
+                  · ${formatDateTime(item.updated_at)}
+                </p>
+            </div>
+          </article>
         `).join("")}
       </div>
     </section>
   `).join("");
-
-  if (!canEdit) {
-    return;
-  }
-
-  listEl.querySelectorAll(".edit-btn").forEach((button) => {
-    button.addEventListener("click", () => {
-      const itemId = Number(button.dataset.id);
-      const item = items.find((currentItem) => currentItem.id === itemId);
-
-      if (item) {
-        openItemForm(item);
-      }
-    });
-  });
-
-  listEl.querySelectorAll(".delete-btn").forEach((button) => {
-    button.addEventListener("click", () => {
-      deleteItem(Number(button.dataset.id));
-    });
-  });
 
   refreshTravelMap();
 }
@@ -2916,23 +3292,28 @@ function setMobileMainTab(tabName) {
 function openToolsDrawer() {
   const drawer = document.getElementById("trip-tools-drawer");
   const backdrop = document.getElementById("trip-tools-backdrop");
+  const openToolsBtn = document.getElementById("open-tools-btn");
   if (!drawer || !backdrop) {
     return;
   }
 
+  setActiveToolsTab("places");
   drawer.classList.add("is-open");
   drawer.setAttribute("aria-hidden", "false");
   backdrop.hidden = false;
   backdrop.classList.add("is-open");
   document.body.classList.add("tools-drawer-open");
+  openToolsBtn?.setAttribute("aria-expanded", "true");
 }
 
 function closeToolsDrawer() {
   const drawer = document.getElementById("trip-tools-drawer");
   const backdrop = document.getElementById("trip-tools-backdrop");
+  const openToolsBtn = document.getElementById("open-tools-btn");
 
   if (!drawer || !backdrop) {
     document.body.classList.remove("tools-drawer-open");
+    openToolsBtn?.setAttribute("aria-expanded", "false");
     return;
   }
 
@@ -2941,6 +3322,7 @@ function closeToolsDrawer() {
   backdrop.classList.remove("is-open");
   backdrop.hidden = true;
   document.body.classList.remove("tools-drawer-open");
+  openToolsBtn?.setAttribute("aria-expanded", "false");
 }
 
 async function deleteItem(itemId) {
@@ -3147,13 +3529,20 @@ const aiItineraryMapDateSelect = document.getElementById("ai-itinerary-map-date"
 const savedCandidatesMapFilter = document.getElementById("saved-candidates-map-filter");
 const travelMapItineraryDateSelect = document.getElementById("travel-map-itinerary-date");
 
-document.getElementById("open-tools-btn")?.addEventListener("click", openToolsDrawer);
 document.getElementById("close-tools-btn")?.addEventListener("click", closeToolsDrawer);
 document.getElementById("trip-tools-backdrop")?.addEventListener("click", closeToolsDrawer);
+
+document.querySelectorAll("[data-tools-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    setActiveToolsTab(button.dataset.toolsTab || "places");
+  });
+});
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeToolsDrawer();
+    closeAllItemActionMenus();
+    closeAllItemDetails();
   }
 });
 
