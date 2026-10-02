@@ -31,8 +31,10 @@ class Settings(BaseSettings):
     smtp_from_email: str = ""
     smtp_from_name: str = "Travel Planner"
     smtp_use_tls: bool = True
-        # 장소 검색 API 설정
+
+    # 지도/장소/AI API 설정
     google_maps_api_key: str = ""
+    google_maps_browser_api_key: str = ""
     kakao_rest_api_key: str = ""
     gemini_api_key: str = ""
 

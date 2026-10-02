@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.core.config import get_settings
 from app.core.dependencies import get_current_user_optional
 from app.core.database import SessionLocal
 
@@ -63,7 +64,17 @@ def trip_new_page(request: Request):
 def trip_detail_page(request: Request, trip_id: int):
     if _current_user_for_page(request) is None:
         return RedirectResponse(url="/login")
-    return templates.TemplateResponse(request, "trip_detail.html", {"trip_id": trip_id})
+
+    settings = get_settings()
+
+    return templates.TemplateResponse(
+        request,
+        "trip_detail.html",
+        {
+            "trip_id": trip_id,
+            "google_maps_browser_api_key": settings.google_maps_browser_api_key,
+        },
+    )
 
 
 @router.get("/trips/{trip_id}/members")
