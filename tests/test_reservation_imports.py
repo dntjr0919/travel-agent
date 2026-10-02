@@ -12,9 +12,10 @@ def test_analyze_reservation_image_transport_success(client, monkeypatch):
     register_and_login(client, "owner-image-transport@example.com")
     trip = create_trip(client)
 
-    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
         assert content_type == "image/png"
         assert image_bytes
+        assert model_name == "gemini-3.5-flash-lite"
         return json.dumps(
             {
                 "kind": "transport",
@@ -38,7 +39,7 @@ def test_analyze_reservation_image_transport_success(client, monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.services.reservation_import_service._get_gemini_json_text",
+        "app.services.reservation_import_service._get_reservation_json_text",
         fake_gemini_json_text,
     )
 
@@ -62,9 +63,10 @@ def test_analyze_reservation_image_accommodation_success(client, monkeypatch):
     register_and_login(client, "owner-image-accommodation@example.com")
     trip = create_trip(client)
 
-    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
         assert content_type == "image/jpeg"
         assert image_bytes
+        assert model_name == "gemini-3.5-flash-lite"
         return json.dumps(
             {
                 "kind": "accommodation",
@@ -88,7 +90,7 @@ def test_analyze_reservation_image_accommodation_success(client, monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.services.reservation_import_service._get_gemini_json_text",
+        "app.services.reservation_import_service._get_reservation_json_text",
         fake_gemini_json_text,
     )
 
@@ -137,7 +139,8 @@ def test_editor_can_analyze_reservation_image(client, monkeypatch):
     register_and_login(client, "editor-image@example.com")
     client.post(f"/api/invitations/{token}/accept")
 
-    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
+        assert model_name == "gemini-3.5-flash-lite"
         return json.dumps(
             {
                 "kind": "transport",
@@ -161,7 +164,7 @@ def test_editor_can_analyze_reservation_image(client, monkeypatch):
         )
 
     monkeypatch.setattr(
-        "app.services.reservation_import_service._get_gemini_json_text",
+        "app.services.reservation_import_service._get_reservation_json_text",
         fake_gemini_json_text,
     )
 
@@ -227,7 +230,7 @@ def test_analyze_reservation_image_timezone_naive_adjusted_to_seoul(client, monk
     register_and_login(client, "owner-image-tz-naive@example.com")
     trip = create_trip(client)
 
-    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
         return json.dumps(
             {
                 "kind": "transportation",
@@ -239,7 +242,7 @@ def test_analyze_reservation_image_timezone_naive_adjusted_to_seoul(client, monk
         )
 
     monkeypatch.setattr(
-        "app.services.reservation_import_service._get_gemini_json_text",
+        "app.services.reservation_import_service._get_reservation_json_text",
         fake_gemini_json_text,
     )
 
@@ -260,7 +263,7 @@ def test_analyze_reservation_image_accommodation_naive_and_normalization(client,
     register_and_login(client, "owner-image-acc-naive@example.com")
     trip = create_trip(client)
 
-    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
         return json.dumps(
             {
                 "kind": "hotel",
@@ -272,7 +275,7 @@ def test_analyze_reservation_image_accommodation_naive_and_normalization(client,
         )
 
     monkeypatch.setattr(
-        "app.services.reservation_import_service._get_gemini_json_text",
+        "app.services.reservation_import_service._get_reservation_json_text",
         fake_gemini_json_text,
     )
 
@@ -293,7 +296,7 @@ def test_analyze_reservation_image_preserves_existing_timezone(client, monkeypat
     register_and_login(client, "owner-image-tz-aware@example.com")
     trip = create_trip(client)
 
-    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
         return json.dumps(
             {
                 "kind": "transport",
@@ -305,7 +308,7 @@ def test_analyze_reservation_image_preserves_existing_timezone(client, monkeypat
         )
 
     monkeypatch.setattr(
-        "app.services.reservation_import_service._get_gemini_json_text",
+        "app.services.reservation_import_service._get_reservation_json_text",
         fake_gemini_json_text,
     )
 
@@ -325,7 +328,7 @@ def test_analyze_reservation_image_strips_markdown_code_fence(client, monkeypatc
     register_and_login(client, "owner-image-fence@example.com")
     trip = create_trip(client)
 
-    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
         payload = {
             "kind": "transport",
             "transport_mode": "bus",
@@ -335,7 +338,7 @@ def test_analyze_reservation_image_strips_markdown_code_fence(client, monkeypatc
         return f"```json\n{json.dumps(payload)}\n```"
 
     monkeypatch.setattr(
-        "app.services.reservation_import_service._get_gemini_json_text",
+        "app.services.reservation_import_service._get_reservation_json_text",
         fake_gemini_json_text,
     )
 
@@ -354,7 +357,7 @@ def test_analyze_reservation_image_invalid_datetime_returns_502(client, monkeypa
     register_and_login(client, "owner-image-invalid-dt@example.com")
     trip = create_trip(client)
 
-    def fake_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
         return json.dumps(
             {
                 "kind": "transport",
@@ -364,7 +367,7 @@ def test_analyze_reservation_image_invalid_datetime_returns_502(client, monkeypa
         )
 
     monkeypatch.setattr(
-        "app.services.reservation_import_service._get_gemini_json_text",
+        "app.services.reservation_import_service._get_reservation_json_text",
         fake_gemini_json_text,
     )
 
@@ -375,3 +378,104 @@ def test_analyze_reservation_image_invalid_datetime_returns_502(client, monkeypa
 
     assert res.status_code == 502
     assert res.json()["code"] == "RESERVATION_IMPORT_INVALID_RESPONSE"
+
+
+def test_analyze_reservation_image_uses_selected_model(client, monkeypatch):
+    register_and_login(client, "owner-image-model-selected@example.com")
+    trip = create_trip(client)
+
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
+        assert model_name == "gemini-3.8-flash"
+        return json.dumps(
+            {
+                "kind": "transport",
+                "transport_mode": "flight",
+                "title": "[항공] 테스트 항공",
+            }
+        )
+
+    monkeypatch.setattr(
+        "app.services.reservation_import_service._get_reservation_json_text",
+        fake_gemini_json_text,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/reservation-imports/analyze-image",
+        data={"model": "gemini_flash"},
+        files={"file": ("reservation.png", b"\x89PNG\r\n\x1a\n123", "image/png")},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["kind"] == "transport"
+
+
+def test_analyze_reservation_image_uses_default_model_when_missing(client, monkeypatch):
+    register_and_login(client, "owner-image-model-default-missing@example.com")
+    trip = create_trip(client)
+
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
+        assert model_name == "gemini-3.5-flash-lite"
+        return json.dumps(
+            {
+                "kind": "transport",
+                "transport_mode": "flight",
+                "title": "[항공] 기본 모델",
+            }
+        )
+
+    monkeypatch.setattr(
+        "app.services.reservation_import_service._get_reservation_json_text",
+        fake_gemini_json_text,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/reservation-imports/analyze-image",
+        files={"file": ("reservation.png", b"\x89PNG\r\n\x1a\n123", "image/png")},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["kind"] == "transport"
+
+
+def test_analyze_reservation_image_uses_default_model_when_blank(client, monkeypatch):
+    register_and_login(client, "owner-image-model-default-blank@example.com")
+    trip = create_trip(client)
+
+    def fake_gemini_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
+        assert model_name == "gemini-3.5-flash-lite"
+        return json.dumps(
+            {
+                "kind": "transport",
+                "transport_mode": "flight",
+                "title": "[항공] 기본 모델",
+            }
+        )
+
+    monkeypatch.setattr(
+        "app.services.reservation_import_service._get_reservation_json_text",
+        fake_gemini_json_text,
+    )
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/reservation-imports/analyze-image",
+        data={"model": "   "},
+        files={"file": ("reservation.png", b"\x89PNG\r\n\x1a\n123", "image/png")},
+    )
+
+    assert res.status_code == 200
+    assert res.json()["kind"] == "transport"
+
+
+def test_analyze_reservation_image_rejects_invalid_model(client):
+    register_and_login(client, "owner-image-model-invalid@example.com")
+    trip = create_trip(client)
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/reservation-imports/analyze-image",
+        data={"model": "not_supported_model"},
+        files={"file": ("reservation.png", b"\x89PNG\r\n\x1a\n123", "image/png")},
+    )
+
+    assert res.status_code == 422
+    assert res.json()["code"] == "RESERVATION_IMPORT_INVALID_MODEL"
+    assert res.json()["detail"] == "지원하지 않는 분석 모델입니다."

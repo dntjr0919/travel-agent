@@ -5,15 +5,15 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
-from app.core.config import get_settings
+from app.core.config import DEFAULT_RESERVATION_ANALYSIS_MODEL, RESERVATION_ANALYSIS_MODEL_NAMES
 from app.core.errors import AppError
 from app.schemas.reservation_import import DEFAULT_WARNING, TIMEZONE_FALLBACK_WARNING, ReservationImportAnalyzeOut
+from app.services.llm import get_gemini_reservation_json
 
 logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
-GEMINI_MODEL_NAME = "gemini-3.5-flash-lite"
 
 
 def is_safe_booking_url(value: str | None) -> bool:
@@ -40,68 +40,25 @@ def validate_image_upload(content_type: str | None, file_size: int) -> None:
         )
 
 
-def _get_gemini_json_text(image_bytes: bytes, content_type: str) -> str:
-    settings = get_settings()
-
-    if not settings.gemini_api_key:
+def resolve_reservation_analysis_model(model: str | None) -> str:
+    model_key = (model or "").strip() or DEFAULT_RESERVATION_ANALYSIS_MODEL
+    model_name = RESERVATION_ANALYSIS_MODEL_NAMES.get(model_key)
+    if not model_name:
         raise AppError(
-            503,
-            "RESERVATION_IMPORT_NOT_CONFIGURED",
-            "API 키를 등록해주세요.",
+            422,
+            "RESERVATION_IMPORT_INVALID_MODEL",
+            "지원하지 않는 분석 모델입니다.",
         )
+    return model_name
 
-    try:
-        from google import genai
-        from google.genai import types
-    except ImportError as exc:
-        raise AppError(
-            503,
-            "RESERVATION_IMPORT_SDK_UNAVAILABLE",
-            "예약 이미지 분석 SDK를 사용할 수 없습니다.",
-        ) from exc
 
-    prompt = """
-이미지에 포함된 예약 정보를 JSON으로만 반환하세요.
-- kind: transport 또는 accommodation
-- transport_mode: flight, train, intercity_bus 중 하나 또는 null
-- title: 예약 항목 제목 (예: [항공] 대한항공 KE703, [숙소] 호텔명)
-- provider_name, service_number, departure_name, arrival_name, accommodation_name, currency, memo: 문자열 또는 null
-- departure_at, arrival_at, checkin_at, checkout_at: ISO8601 형식(예: 2026-10-10T09:00:00+09:00 또는 2026-10-10T09:00:00) 또는 null
-- price_amount: 쉼표나 통화 기호 없는 순수 숫자(예: 285000) 또는 null
-- booking_url: null
-- warnings: 원본 대조 안내를 포함한 문자열 배열
-- 확실하지 않은 값은 추측하지 말고 null
-- 예약번호, QR/바코드, 여권, 카드번호, 이름, 연락처는 무시하고 반환하지 말 것
-반드시 마크다운이나 추가 설명 없이 순수 JSON 객체 하나만 출력하세요.
-""".strip()
+def _get_reservation_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
+    return get_gemini_reservation_json(
+        image_bytes=image_bytes,
+        content_type=content_type,
+        model_name=model_name,
+    )
 
-    client = genai.Client(api_key=settings.gemini_api_key)
-
-    try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL_NAME,
-            contents=[
-                prompt,
-                types.Part.from_bytes(data=image_bytes, mime_type=content_type),
-            ],
-            config=types.GenerateContentConfig(response_mime_type="application/json"),
-        )
-    except Exception as exc:
-        raise AppError(
-            502,
-            "RESERVATION_IMPORT_PROVIDER_ERROR",
-            "예약 이미지 분석 중 외부 서비스 호출에 실패했습니다.",
-        ) from exc
-
-    response_text = getattr(response, "text", None)
-    if not response_text or not response_text.strip():
-        raise AppError(
-            502,
-            "RESERVATION_IMPORT_INVALID_RESPONSE",
-            "예약 이미지 분석 결과를 해석할 수 없습니다.",
-        )
-
-    return response_text
 
 def _strip_markdown_code_fence(text: str) -> str:
     cleaned = text.strip()
@@ -118,13 +75,19 @@ def analyze_reservation_image_draft(
     image_bytes: bytes,
     content_type: str,
     booking_url: str | None = None,
+    model: str | None = None,
 ) -> ReservationImportAnalyzeOut:
     validate_image_upload(content_type=content_type, file_size=len(image_bytes))
 
     if booking_url is not None and booking_url.strip() and not is_safe_booking_url(booking_url.strip()):
         raise AppError(422, "RESERVATION_IMPORT_INVALID_BOOKING_URL", "예약 링크 형식이 올바르지 않습니다.")
 
-    response_text = _get_gemini_json_text(image_bytes=image_bytes, content_type=content_type)
+    model_name = resolve_reservation_analysis_model(model)
+    response_text = _get_reservation_json_text(
+        image_bytes=image_bytes,
+        content_type=content_type,
+        model_name=model_name,
+    )
     cleaned_json_text = _strip_markdown_code_fence(response_text)
 
     try:

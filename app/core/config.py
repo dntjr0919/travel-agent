@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_RESERVATION_ANALYSIS_MODEL = "gemini_flash_lite"
+RESERVATION_ANALYSIS_MODEL_NAMES = {
+    "gemini_flash_lite": "gemini-3.5-flash-lite",
+    "gemini_flash": "gemini-3.8-flash",
+}
 
 
 class Settings(BaseSettings):

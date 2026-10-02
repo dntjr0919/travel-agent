@@ -22,6 +22,7 @@ async def analyze_reservation_image(
     trip_id: int,
     file: UploadFile = File(...),
     booking_url: str | None = Form(default=None),
+    model: str | None = Form(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ReservationImportAnalyzeOut:
@@ -42,8 +43,9 @@ async def analyze_reservation_image(
 
         return analyze_reservation_image_draft(
             image_bytes=image_bytes,
-            content_type=file.content_type,
+            content_type=file.content_type or "",
             booking_url=booking_url,
+            model=model,
         )
     finally:
         await file.close()
