@@ -805,9 +805,48 @@ button.secondary, .button.secondary {
   margin: 0;
 }
 
+.travel-booking-candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.travel-booking-candidate-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-card);
+}
+
+.travel-booking-candidate-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.travel-booking-candidate-main h4 {
+  margin: 0.25rem 0;
+  font-size: 1rem;
+}
+
+.travel-booking-candidate-main p {
+  margin: 0.35rem 0;
+}
+
+.travel-booking-price {
+  font-weight: 700;
+}
+
 @media (max-width: 640px) {
   .place-result-card,
-  .place-candidate-card {
+  .place-candidate-card,
+  .travel-booking-candidate-card {
     flex-direction: column;
   }
 

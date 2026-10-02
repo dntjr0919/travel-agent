@@ -4,6 +4,7 @@ from app.models.password_reset import PasswordResetToken
 from app.models.trip import Trip, TripMember, TripMemberStatus, TripRole
 from app.models.user import User
 from app.models.place_candidate import PlaceCandidate
+from app.models.travel_booking_candidate import TravelBookingCandidate
 
 __all__ = [
     "User",
@@ -18,4 +19,5 @@ __all__ = [
     "ItineraryStatus",
     "PasswordResetToken",
     "PlaceCandidate",
+    "TravelBookingCandidate",
 ]

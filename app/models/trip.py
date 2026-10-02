@@ -41,6 +41,7 @@ class Trip(Base):
     members = relationship("TripMember", back_populates="trip", cascade="all, delete-orphan")
     itinerary_items = relationship("ItineraryItem", back_populates="trip", cascade="all, delete-orphan")
     invitations = relationship("Invitation", back_populates="trip", cascade="all, delete-orphan")
+    booking_candidates = relationship("TravelBookingCandidate", back_populates="trip", cascade="all, delete-orphan")
 
 
 class TripMember(Base):
