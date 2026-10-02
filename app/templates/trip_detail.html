@@ -178,7 +178,10 @@
   aria-label="여행 도구"
 >
   <div class="trip-tools-drawer-header">
-    <h2>여행 도구</h2>
+    <div class="trip-tools-drawer-heading">
+      <p class="trip-tools-eyebrow">여행 준비 센터</p>
+      <h2>여행 도구</h2>
+    </div>
     <button id="close-tools-btn" type="button" class="secondary">닫기</button>
   </div>
   <div
@@ -206,7 +209,7 @@
       role="tab"
       aria-selected="false"
     >
-      AI
+      AI 일정
     </button>
 
     <button
@@ -3098,14 +3101,14 @@ function renderPlaceCandidates(candidates) {
         </div>
 
         ${candidate.address
-          ? `<p class="muted">📍 ${escapeHtml(candidate.address)}</p>`
+          ? `<p class="muted place-candidate-address">📍 ${escapeHtml(candidate.address)}</p>`
           : ""}
 
         ${candidate.memo
           ? `<p class="memo">${escapeHtml(candidate.memo)}</p>`
           : ""}
 
-        <p class="muted small">
+        <p class="muted small place-candidate-meta">
           추가: ${escapeHtml(candidate.created_by_name)}
           · ${formatDateTime(candidate.created_at)}
           · 제공: ${candidate.provider === "google" ? "Google Places" : candidate.provider === "kakao" ? "Kakao Local" : candidate.provider}
@@ -3113,6 +3116,14 @@ function renderPlaceCandidates(candidates) {
       </div>
 
       <div class="place-candidate-actions">
+        ${canEdit
+          ? `<button
+              class="add-place-to-itinerary-btn"
+              data-place="${encodeURIComponent(JSON.stringify(candidate))}"
+            >일정에 추가</button>`
+          : ""}
+
+        <div class="place-candidate-secondary-actions">
         ${candidate.map_url
           ? `
             <a
@@ -3128,12 +3139,6 @@ function renderPlaceCandidates(candidates) {
 
         ${canEdit
           ? `
-          <button
-  class="add-place-to-itinerary-btn"
-  data-place="${encodeURIComponent(JSON.stringify(candidate))}"
->
-  일정에 추가
-</button>
             <button
               class="edit-place-memo-btn secondary"
               data-id="${candidate.id}"
@@ -3151,6 +3156,7 @@ function renderPlaceCandidates(candidates) {
             </button>
           `
           : ""}
+        </div>
       </div>
     </article>
   `).join("");
@@ -3931,7 +3937,10 @@ function renderItineraries(items) {
                 aria-expanded="false"
                 aria-controls="item-details-${item.id}"
               >
-                <span class="item-time">${escapeHtml(formatTimeRange(item.start_at, item.end_at))}</span>
+                <span class="item-time-stack">
+                  <span class="item-time item-time-start">${escapeHtml(formatTimeRange(item.start_at, null))}</span>
+                  <span class="item-time item-time-end">${item.end_at ? escapeHtml(formatTimeRange(item.end_at, null)) : ""}</span>
+                </span>
 
                 <span class="item-summary-main">
                   ${renderItemSummaryText(item)}

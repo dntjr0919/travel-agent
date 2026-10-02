@@ -43,6 +43,8 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'aria-controls="trip-tools-drawer"' in text
     assert 'id="trip-tools-tab-places"' in text
     assert 'id="trip-tools-tab-ai"' in text
+    assert "여행 준비 센터" in text
+    assert "AI 일정" in text
     assert 'id="trip-tools-tab-reservations"' in text
     assert 'id="trip-tools-panel-places"' in text
     assert 'id="trip-tools-panel-ai"' in text
@@ -73,7 +75,13 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'id="travel-map-candidate-controls"' in text
     assert 'id="travel-map-ai-controls"' in text
     assert 'class="item-summary"' in text
+    assert 'class="item-time-stack"' in text
+    assert 'class="item-time item-time-start"' in text
+    assert 'class="item-time item-time-end"' in text
     assert 'class="item-details"' in text
+    assert "place-candidate-address" in text
+    assert "place-candidate-meta" in text
+    assert 'class="place-candidate-secondary-actions"' in text
     assert 'class="item-menu-trigger' in text
     assert 'class="item-action-menu"' in text
     assert 'aria-expanded="false"' in text
