@@ -380,6 +380,23 @@ button.secondary, .button.secondary {
   word-break: keep-all;
 }
 
+.trip-schedule-card .item-route {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.trip-schedule-card .item-stay-meta {
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.trip-schedule-card .item-card--transportation .item-time,
+.trip-schedule-card .item-card--accommodation .item-time {
+  font-size: 1rem;
+}
+
 .trip-schedule-card .item-badges {
   display: flex;
   flex-wrap: wrap;

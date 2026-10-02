@@ -735,8 +735,10 @@ function renderMemoWithMapLink(memo) {
   const renderedLines = lines.map((line) => {
     const trimmed = line.trim();
 
-    if (trimmed.startsWith("예약 링크: ")) {
-      const url = trimmed.slice("예약 링크: ".length).trim();
+    if (trimmed.startsWith("예약:") || trimmed.startsWith("예약 링크:")) {
+  const url = trimmed.startsWith("예약 링크:")
+    ? trimmed.slice("예약 링크:".length).trim()
+    : trimmed.slice("예약:".length).trim();
 
       if (url.startsWith("https://") || url.startsWith("http://")) {
         return `
@@ -3021,6 +3023,35 @@ function normalizeComparableText(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function hasRouteArrow(value) {
+  return /→|->/.test(String(value || ""));
+}
+
+function renderItemSummaryText(item) {
+  const title = item.title || "";
+  const location = item.location_name || "";
+  const sameText = normalizeComparableText(location) === normalizeComparableText(title);
+
+  if (item.category === "transportation") {
+    const route = hasRouteArrow(location) ? location : title;
+    const sub = route === location && !sameText && title
+      ? `<span class="item-stay-meta">${escapeHtml(title)}</span>`
+      : "";
+    return `<strong class="item-title item-route">${escapeHtml(route)}</strong>${sub}`;
+  }
+
+  if (item.category === "accommodation") {
+    const combined = `${title} ${location}`;
+    const hasCheckin = combined.includes("체크인");
+    const hasCheckout = combined.includes("체크아웃");
+    const label = hasCheckin && !hasCheckout ? "체크인" : hasCheckout && !hasCheckin ? "체크아웃" : "숙소";
+    const meta = [label, location && !sameText ? location : ""].filter(Boolean).join(" · ");
+    return `<strong class="item-title">${escapeHtml(title)}</strong><span class="item-stay-meta">${escapeHtml(meta)}</span>`;
+  }
+
+  return `<strong class="item-title">${escapeHtml(title)}</strong>`;
+}
+
 function setItemDetailsOpenState(card, isOpen) {
   const summaryButton = card.querySelector(".item-summary");
   const detailsEl = card.querySelector(".item-details");
@@ -3250,7 +3281,7 @@ function renderItineraries(items) {
 
       <div class="item-list">
         ${groups[date].map((item) => `
-          <article class="item-card" data-id="${item.id}">
+          <article class="item-card${item.category === "transportation" || item.category === "accommodation" ? ` item-card--${item.category}` : ""}" data-id="${item.id}">
             <div class="item-card-head">
               <button
                 type="button"
@@ -3261,7 +3292,7 @@ function renderItineraries(items) {
                 <span class="item-time">${escapeHtml(formatTimeRange(item.start_at, item.end_at))}</span>
 
                 <span class="item-summary-main">
-                  <strong class="item-title">${escapeHtml(item.title)}</strong>
+                  ${renderItemSummaryText(item)}
 
                   <span class="item-meta item-badges">
                     <span class="badge category-${item.category}">
