@@ -1,8 +1,65 @@
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
 from app.core.config import get_settings
 from tests.conftest import register_and_login
 from tests.test_trips import create_trip
+
+
+def test_saved_place_candidate_pagination_slices_twelve_candidates_into_expected_pages():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the inline pagination helper")
+
+    template_path = Path(__file__).parents[1] / "app" / "templates" / "trip_detail.html"
+    template = template_path.read_text(encoding="utf-8")
+    page_size_start = template.index("const PLACE_CANDIDATE_PAGE_SIZE = ")
+    page_size_end = template.index("\n", page_size_start)
+    page_size_source = template[page_size_start:page_size_end]
+    helper_start = template.index("function getPlaceCandidatePage(")
+    helper_end = template.index("\nfunction renderPlaceCandidates(", helper_start)
+    helper_source = template[helper_start:helper_end]
+    script = f"""
+{page_size_source}
+{helper_source}
+const candidates = Array.from({{ length: 12 }}, (_, index) => ({{ name: `place-${{index + 1}}` }}));
+const pages = [1, 2, 3].map((pageNumber) => {{
+  const page = getPlaceCandidatePage(candidates, pageNumber);
+  return {{
+    range: `${{page.startIndex + 1}}–${{page.endIndex}} / 총 ${{candidates.length}}개`,
+    names: page.visibleCandidates.map((candidate) => candidate.name),
+  }};
+}});
+process.stdout.write(JSON.stringify(pages));
+"""
+    result = subprocess.run(
+        [node, "--input-type=commonjs", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert json.loads(result.stdout) == [
+        {
+            "range": "1–5 / 총 12개",
+            "names": [f"place-{index}" for index in range(1, 6)],
+        },
+        {
+            "range": "6–10 / 총 12개",
+            "names": [f"place-{index}" for index in range(6, 11)],
+        },
+        {
+            "range": "11–12 / 총 12개",
+            "names": [f"place-{index}" for index in range(11, 13)],
+        },
+    ]
 
 
 def test_auth_pages_preserve_forms_fields_and_navigation(client):
@@ -134,6 +191,10 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'aria-controls="trip-tools-drawer"' in text
     assert 'id="trip-tools-tab-places"' in text
     assert 'id="trip-tools-tab-ai"' in text
+    assert 'id="trip-tools-tab-reservations"' in text
+    for tab_name in ("places", "ai", "reservations"):
+        assert f'data-tools-tab="{tab_name}"' in text
+    assert text.count('role="tab"') == 3
     assert 'id="external-llm-prompt"' in text
     assert 'id="external-llm-copy-prompt-btn"' in text
     assert 'id="external-llm-json"' in text
@@ -154,8 +215,25 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'id="external-llm-accordion-content" class="tool-accordion-content" hidden' in text
     assert 'id="reservation-transport-accordion-toggle"' in text
     assert 'id="reservation-transport-accordion-content" class="tool-accordion-content" hidden' in text
+    assert 'id="reservation-analysis-accordion-toggle"' in text
+    assert 'aria-controls="reservation-analysis-accordion-content"' in text
+    assert 'id="reservation-analysis-accordion-content" class="tool-accordion-content" hidden' in text
+    assert 'id="reservation-add-accordion-toggle"' in text
+    assert 'aria-controls="reservation-add-accordion-content"' in text
+    assert 'id="reservation-add-accordion-content" class="tool-accordion-content" hidden' in text
     assert 'id="reservation-accommodation-accordion-toggle"' in text
     assert 'id="reservation-accommodation-accordion-content" class="tool-accordion-content" hidden' in text
+    assert '<span>예약 정보 분석</span>' in text
+    assert '<span>예약 후보 추가</span>' in text
+    assert '<span>교통 후보 보관함</span>' in text
+    assert '<span>숙박 후보 보관함</span>' in text
+    reservation_add_start = text.index('id="reservation-add-accordion-content"')
+    reservation_transport_start = text.index('id="reservation-transport-accordion-toggle"', reservation_add_start)
+    reservation_add_content = text[reservation_add_start:reservation_transport_start]
+    assert 'id="travel-booking-candidate-form"' in reservation_add_content
+    assert '<select name="kind" required>' in reservation_add_content
+    assert 'id="travel-booking-candidate-add-btn"' in reservation_add_content
+    assert 'id="travel-booking-candidate-error"' in reservation_add_content
     for interest in ("culture", "cafe", "nature", "shopping", "food", "night_view"):
         assert f'name="interests" value="{interest}"' in text
     assert 'id="external-llm-selection-count"' in text
@@ -164,6 +242,13 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'id="place-search-pagination"' in text
     assert 'id="place-search-prev-btn"' in text
     assert 'id="place-search-next-btn"' in text
+    assert 'id="place-candidate-pagination"' in text
+    assert 'id="place-candidate-prev-btn"' in text
+    assert 'id="place-candidate-next-btn"' in text
+    assert "const PLACE_CANDIDATE_PAGE_SIZE = 5;" in text
+    assert "getPlaceCandidatePage(currentPlaceCandidates, placeCandidateCurrentPage)" in text
+    assert "visibleCandidates: candidates.slice(startIndex, endIndex)" in text
+    assert "placeCandidateCurrentPage = 1;" in text
     assert 'class="reservation-tool-section reservation-import-section"' in text
     assert 'id="reservation-import-heading"' in text
     assert 'id="reservation-image-form"' in text
@@ -173,9 +258,14 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'id="travel-booking-accommodation-heading"' in text
     assert 'id="travel-booking-transport-list"' in text
     assert 'id="travel-booking-accommodation-list"' in text
+    assert 'id="travel-booking-transport-empty"' in text
+    assert 'id="travel-booking-accommodation-empty"' in text
     assert 'id="reservation-analysis-save-candidate-btn"' in text
     assert 'id="reservation-analysis-save-candidate-success"' in text
     assert 'id="reservation-analysis-save-candidate-error"' in text
+    assert 'id="ai-itinerary-route-btn"' in text
+    assert 'id="ai-itinerary-result"' in text
+    assert text.index('id="ai-itinerary-result"') < text.index('id="ai-itinerary-route-btn"')
     assert "add-booking-candidate-to-itinerary-btn" in text
     assert "edit-travel-booking-candidate-btn" in text
     assert "delete-travel-booking-candidate-btn" in text

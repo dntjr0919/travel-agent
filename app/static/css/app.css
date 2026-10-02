@@ -1925,6 +1925,12 @@ body:not(:has(.auth-card)) .nav-guest-links {
   border-bottom: 1px solid var(--ui-border);
 }
 
+#trip-tools-drawer #trip-tools-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+
 .trip-tools-tab {
   position: relative;
   flex: 1 1 0;
@@ -1937,6 +1943,18 @@ body:not(:has(.auth-card)) .nav-guest-links {
   background: transparent;
   color: var(--ui-text-muted);
   font-size: 0.9rem;
+}
+
+#trip-tools-drawer #trip-tools-tabs .trip-tools-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center; /* 추가 */
+  width: 100%;
+  min-width: 0;
+  padding-right: 0.15rem;
+  padding-left: 0.15rem;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .trip-tools-tab:hover {

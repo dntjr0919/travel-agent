@@ -229,17 +229,17 @@
   <div class="tool-accordion-list" data-tool-accordion-group="reservations">
     <section class="tool-accordion-item">
       <button
-        id="reservation-transport-accordion-toggle"
+        id="reservation-analysis-accordion-toggle"
         class="tool-accordion-toggle"
         type="button"
-        data-tool-accordion-trigger="transport"
+        data-tool-accordion-trigger="analysis"
         aria-expanded="false"
-        aria-controls="reservation-transport-accordion-content"
+        aria-controls="reservation-analysis-accordion-content"
       >
-        <span>교통편 예약 관리</span>
+        <span>예약 정보 분석</span>
         <span class="tool-accordion-chevron" aria-hidden="true">▾</span>
       </button>
-      <div id="reservation-transport-accordion-content" class="tool-accordion-content" hidden>
+      <div id="reservation-analysis-accordion-content" class="tool-accordion-content" hidden>
 <section class="reservation-tool-section reservation-import-section" aria-labelledby="reservation-import-heading">
   <div class="reservation-section-heading">
     <div>
@@ -432,14 +432,29 @@
 </section>
 </section>
 
+      </div>
+    </section>
+    <section class="tool-accordion-item">
+      <button
+        id="reservation-add-accordion-toggle"
+        class="tool-accordion-toggle"
+        type="button"
+        data-tool-accordion-trigger="add"
+        aria-expanded="false"
+        aria-controls="reservation-add-accordion-content"
+      >
+        <span>예약 후보 추가</span>
+        <span class="tool-accordion-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div id="reservation-add-accordion-content" class="tool-accordion-content" hidden>
     <div class="section-header reservation-section-heading">
       <div>
         <p class="tool-section-eyebrow">예약 후보</p>
-        <h2 id="travel-booking-candidate-heading">교통·숙박 후보 보관함</h2>
-        <p class="muted small">가격은 직접 입력한 참고 정보이며 실시간 가격이 아닙니다.</p>
+        <h2 id="travel-booking-candidate-heading">예약 후보 추가</h2>
+        <p class="muted small">교통 또는 숙박 정보를 직접 입력해 후보로 보관합니다.</p>
       </div>
       <button id="travel-booking-candidate-add-btn" type="button" style="display:none">
-        교통·숙박 후보 추가
+        후보 추가
       </button>
     </div>
 
@@ -519,6 +534,22 @@
         <button type="button" id="travel-booking-candidate-cancel-btn" class="secondary">취소</button>
       </div>
     </form>
+        <button type="button" class="tool-accordion-back secondary" data-tool-accordion-close="reservations">예약 도구 목록으로</button>
+      </div>
+    </section>
+    <section class="tool-accordion-item">
+      <button
+        id="reservation-transport-accordion-toggle"
+        class="tool-accordion-toggle"
+        type="button"
+        data-tool-accordion-trigger="transport"
+        aria-expanded="false"
+        aria-controls="reservation-transport-accordion-content"
+      >
+        <span>교통 후보 보관함</span>
+        <span class="tool-accordion-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div id="reservation-transport-accordion-content" class="tool-accordion-content" hidden>
     <section class="reservation-candidate-group" aria-labelledby="travel-booking-transport-heading">
       <div class="reservation-section-heading">
         <div>
@@ -542,7 +573,7 @@
         aria-expanded="false"
         aria-controls="reservation-accommodation-accordion-content"
       >
-        <span>숙소 예약 관리</span>
+        <span>숙박 후보 보관함</span>
         <span class="tool-accordion-chevron" aria-hidden="true">▾</span>
       </button>
       <div id="reservation-accommodation-accordion-content" class="tool-accordion-content" hidden>
@@ -644,12 +675,12 @@
 
   <p id="ai-itinerary-error" class="error-text"></p>
   <div id="ai-itinerary-loading" class="muted small" style="display:none; margin-top: 0.5rem;">코스를 만드는 중...</div>
+  <div id="ai-itinerary-result" style="display:none; margin-top: 0.75rem;"></div>
   <div class="form-actions" style="margin-top: 0.5rem;">
     <button type="button" id="ai-itinerary-route-btn" style="display:none;">도보 동선 계산</button>
   </div>
   <div id="ai-itinerary-route-loading" class="muted small" style="display:none; margin-top: 0.5rem;">도보 동선을 계산하는 중...</div>
   <p id="ai-itinerary-route-error" class="error-text"></p>
-  <div id="ai-itinerary-result" style="display:none; margin-top: 0.75rem;"></div>
         <button type="button" class="tool-accordion-back secondary" data-tool-accordion-close="ai">AI 도구 목록으로</button>
       </div>
     </section>
@@ -767,6 +798,15 @@
   </div>
 
   <div id="place-candidate-list" class="place-candidate-list"></div>
+
+  <div id="place-candidate-pagination" class="place-search-pagination" hidden aria-label="저장한 장소 후보 페이지">
+    <span id="place-candidate-range" aria-live="polite"></span>
+    <div class="place-search-pagination-controls">
+      <button type="button" id="place-candidate-prev-btn" class="secondary">이전</button>
+      <span id="place-candidate-page" aria-live="polite"></span>
+      <button type="button" id="place-candidate-next-btn" class="secondary">다음</button>
+    </div>
+  </div>
 
   <p id="place-candidate-empty" class="empty-state" style="display:none">
     아직 저장한 장소 후보가 없습니다.
@@ -911,6 +951,8 @@ let itineraryCardHighlightTimer = null;
 let currentPlaceSearchResults = [];
 let currentPlaceSearchPage = 1;
 const PLACE_SEARCH_PAGE_SIZE = 5;
+let placeCandidateCurrentPage = 1;
+const PLACE_CANDIDATE_PAGE_SIZE = 5;
 let travelMapReady = false;
 let travelMapLoadFailed = false;
 let activeTravelMapTab = "itineraries";
@@ -1389,6 +1431,10 @@ function setToolAccordion(groupName, itemName) {
       chevron.textContent = expanded ? "▴" : "▾";
     }
   });
+
+  if (groupName === "ai") {
+    updateAiItineraryRouteButtonVisibility();
+  }
 }
 
 function syncToolsPanelVisibility() {
@@ -1463,6 +1509,7 @@ function setActiveToolsTab(tabName) {
   const nextTab = availableTabs.includes(tabName) ? tabName : "places";
   activeToolsTab = nextTab;
   syncToolsPanelVisibility();
+  updateAiItineraryRouteButtonVisibility();
 }
 
 function setToolsDrawerPermissions(canEdit) {
@@ -2587,9 +2634,7 @@ function canCalculateAiWalkingRoutes() {
     return false;
   }
 
-  return currentAiItineraryDraft.days.some(
-    (day) => Array.isArray(day.items) && day.items.length >= 2,
-  );
+  return buildAiItineraryRoutesRequestPayload().days.length > 0;
 }
 
 function updateAiItineraryRouteButtonVisibility() {
@@ -3267,24 +3312,46 @@ async function savePlaceCandidate(place, button) {
   }
 }
 
+function getPlaceCandidatePage(candidates, pageNumber) {
+  const totalPages = Math.ceil(candidates.length / PLACE_CANDIDATE_PAGE_SIZE);
+  const currentPage = Math.min(Math.max(pageNumber, 1), totalPages);
+  const startIndex = (currentPage - 1) * PLACE_CANDIDATE_PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PLACE_CANDIDATE_PAGE_SIZE, candidates.length);
+
+  return {
+    currentPage,
+    totalPages,
+    startIndex,
+    endIndex,
+    visibleCandidates: candidates.slice(startIndex, endIndex),
+  };
+}
+
 function renderPlaceCandidates(candidates) {
   const listEl = document.getElementById("place-candidate-list");
   const emptyEl = document.getElementById("place-candidate-empty");
+  const paginationEl = document.getElementById("place-candidate-pagination");
   currentPlaceCandidates = Array.isArray(candidates) ? candidates : [];
   updateTravelMapTabCounts();
 
-  if (!candidates || candidates.length === 0) {
+  if (currentPlaceCandidates.length === 0) {
     listEl.innerHTML = "";
     emptyEl.style.display = "block";
+    paginationEl.hidden = true;
+    placeCandidateCurrentPage = 1;
     refreshSavedCandidatesMap();
     return;
   }
 
   emptyEl.style.display = "none";
 
+  const page = getPlaceCandidatePage(currentPlaceCandidates, placeCandidateCurrentPage);
+  placeCandidateCurrentPage = page.currentPage;
+  const { totalPages, startIndex, endIndex, visibleCandidates } = page;
+
   const canEdit = canEditPlaces();
 
-  listEl.innerHTML = candidates.map((candidate) => `
+  listEl.innerHTML = visibleCandidates.map((candidate) => `
     <article class="place-candidate-card">
       <div class="place-candidate-main">
         <div class="place-candidate-title-row">
@@ -3355,6 +3422,18 @@ function renderPlaceCandidates(candidates) {
     </article>
   `).join("");
 
+  if (currentPlaceCandidates.length <= PLACE_CANDIDATE_PAGE_SIZE) {
+    paginationEl.hidden = true;
+  } else {
+    paginationEl.hidden = false;
+    document.getElementById("place-candidate-range").textContent =
+      `${startIndex + 1}–${endIndex} / 총 ${currentPlaceCandidates.length}개`;
+    document.getElementById("place-candidate-page").textContent =
+      `${placeCandidateCurrentPage} / ${totalPages}`;
+    document.getElementById("place-candidate-prev-btn").disabled = placeCandidateCurrentPage === 1;
+    document.getElementById("place-candidate-next-btn").disabled = placeCandidateCurrentPage === totalPages;
+  }
+
   if (canEdit) {
       listEl.querySelectorAll(".add-place-to-itinerary-btn").forEach((button) => {
     button.addEventListener("click", () => {
@@ -3396,6 +3475,7 @@ function renderPlaceCandidates(candidates) {
 
 async function loadPlaceCandidates() {
   const listEl = document.getElementById("place-candidate-list");
+  placeCandidateCurrentPage = 1;
 
   try {
     const res = await apiFetch(
@@ -3405,6 +3485,7 @@ async function loadPlaceCandidates() {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       currentPlaceCandidates = [];
+      document.getElementById("place-candidate-pagination").hidden = true;
       updateTravelMapTabCounts();
       refreshSavedCandidatesMap();
       listEl.innerHTML = `
@@ -3420,6 +3501,7 @@ async function loadPlaceCandidates() {
   } catch (error) {
     console.error("장소 후보 목록 오류", error);
     currentPlaceCandidates = [];
+    document.getElementById("place-candidate-pagination").hidden = true;
     updateTravelMapTabCounts();
     refreshSavedCandidatesMap();
 
@@ -4640,6 +4722,19 @@ document.getElementById("place-search-next-btn").addEventListener("click", () =>
   if (currentPlaceSearchPage >= totalPages) return;
   currentPlaceSearchPage += 1;
   renderPlaceSearchResults(currentPlaceSearchResults);
+});
+
+document.getElementById("place-candidate-prev-btn").addEventListener("click", () => {
+  if (placeCandidateCurrentPage <= 1) return;
+  placeCandidateCurrentPage -= 1;
+  renderPlaceCandidates(currentPlaceCandidates);
+});
+
+document.getElementById("place-candidate-next-btn").addEventListener("click", () => {
+  const totalPages = Math.ceil(currentPlaceCandidates.length / PLACE_CANDIDATE_PAGE_SIZE);
+  if (placeCandidateCurrentPage >= totalPages) return;
+  placeCandidateCurrentPage += 1;
+  renderPlaceCandidates(currentPlaceCandidates);
 });
 
 document.getElementById("external-booking-kind").addEventListener("change", () => {
