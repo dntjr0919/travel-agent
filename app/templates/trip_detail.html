@@ -225,7 +225,16 @@
   </div>
 
   <div id="trip-tools-panel-reservations" class="trip-tools-panel">
-<section id="reservation-image-panel" class="card" style="display:none">
+<section class="reservation-tool-section reservation-import-section" aria-labelledby="reservation-import-heading">
+  <div class="reservation-section-heading">
+    <div>
+      <p class="tool-section-eyebrow">예약 가져오기</p>
+      <h3 id="reservation-import-heading">예약 정보 분석</h3>
+      <p class="muted small">예약 스크린샷을 분석하고 외부 예약 정보를 기존 일정으로 가져옵니다.</p>
+    </div>
+  </div>
+
+<section id="reservation-image-panel" class="card reservation-import-subsection" style="display:none">
   <div class="section-header">
     <div>
       <h2>예약 스크린샷으로 분석</h2>
@@ -283,7 +292,7 @@
   <div id="reservation-image-warnings" style="display:none; margin-top: 0.5rem; font-size: 0.85rem; color: #d97706;"></div>
 </section>
 
-<section id="external-booking-panel" class="card" style="display:none">
+<section id="external-booking-panel" class="card reservation-import-subsection" style="display:none">
   <div class="section-header">
     <div>
       <h2>외부 예약 링크로 일정 추가</h2>
@@ -406,11 +415,13 @@
     <p id="reservation-analysis-save-candidate-error" class="error-text" style="display:none" aria-live="polite"></p>
   </div>
 </section>
+</section>
 
-  <section id="travel-booking-candidate-panel" class="card" style="display:none">
-    <div class="section-header">
+  <section id="travel-booking-candidate-panel" class="card reservation-tool-section reservation-candidates-section" aria-labelledby="travel-booking-candidate-heading" style="display:none">
+    <div class="section-header reservation-section-heading">
       <div>
-        <h2>교통·숙박 후보 보관함</h2>
+        <p class="tool-section-eyebrow">예약 후보</p>
+        <h2 id="travel-booking-candidate-heading">교통·숙박 후보 보관함</h2>
         <p class="muted small">가격은 직접 입력한 참고 정보이며 실시간 가격이 아닙니다.</p>
       </div>
       <button id="travel-booking-candidate-add-btn" type="button" style="display:none">
@@ -494,12 +505,28 @@
         <button type="button" id="travel-booking-candidate-cancel-btn" class="secondary">취소</button>
       </div>
     </form>
-    <h3>교통</h3>
-    <div id="travel-booking-transport-list" class="travel-booking-candidate-list"></div>
-    <p id="travel-booking-transport-empty" class="muted small">저장된 교통 후보가 없습니다.</p>
-    <h3>숙박</h3>
-    <div id="travel-booking-accommodation-list" class="travel-booking-candidate-list"></div>
-    <p id="travel-booking-accommodation-empty" class="muted small">저장된 숙박 후보가 없습니다.</p>
+    <section class="reservation-candidate-group" aria-labelledby="travel-booking-transport-heading">
+      <div class="reservation-section-heading">
+        <div>
+          <p class="tool-section-eyebrow">교통</p>
+          <h3 id="travel-booking-transport-heading">교통 후보</h3>
+          <p class="muted small">저장한 교통 후보의 경로와 예약 정보를 확인합니다.</p>
+        </div>
+      </div>
+      <div id="travel-booking-transport-list" class="travel-booking-candidate-list"></div>
+      <p id="travel-booking-transport-empty" class="muted small">저장된 교통 후보가 없습니다.</p>
+    </section>
+    <section class="reservation-candidate-group" aria-labelledby="travel-booking-accommodation-heading">
+      <div class="reservation-section-heading">
+        <div>
+          <p class="tool-section-eyebrow">숙박</p>
+          <h3 id="travel-booking-accommodation-heading">숙박 후보</h3>
+          <p class="muted small">저장한 숙박 후보의 체크인·체크아웃 정보를 확인합니다.</p>
+        </div>
+      </div>
+      <div id="travel-booking-accommodation-list" class="travel-booking-candidate-list"></div>
+      <p id="travel-booking-accommodation-empty" class="muted small">저장된 숙박 후보가 없습니다.</p>
+    </section>
   </section>
 
   </div>
@@ -3275,34 +3302,52 @@ function renderTravelBookingCandidateCard(candidate, canEdit) {
   const details = isTransport
     ? [candidate.provider_name, candidate.service_number].filter(Boolean).join(" · ")
     : candidate.provider_name || "";
-  const places = isTransport
-    ? [candidate.departure_name, candidate.arrival_name].filter(Boolean).map(escapeHtml).join(" → ")
-    : escapeHtml(candidate.accommodation_name || "");
-  const dates = isTransport
-    ? `${candidate.departure_at ? escapeHtml(formatDateTime(candidate.departure_at)) : "출발 시간 미정"} → ${candidate.arrival_at ? escapeHtml(formatDateTime(candidate.arrival_at)) : "도착 시간 미정"}`
-    : `${candidate.check_in_at ? escapeHtml(formatDateTime(candidate.check_in_at)) : "체크인 미정"} → ${candidate.check_out_at ? escapeHtml(formatDateTime(candidate.check_out_at)) : "체크아웃 미정"}`;
   const bookingUrl = safeTravelBookingUrl(candidate.booking_url);
 
   return `
     <article class="travel-booking-candidate-card">
       <div class="travel-booking-candidate-main">
         <div class="place-candidate-title-row">
-          ${isTransport ? `<span class="badge">${escapeHtml(modeLabels[candidate.transport_mode] || "교통")}</span>` : ""}
+          ${isTransport && modeLabels[candidate.transport_mode] ? `<span class="badge">${escapeHtml(modeLabels[candidate.transport_mode])}</span>` : ""}
           <h4>${escapeHtml(title)}</h4>
         </div>
-        ${details ? `<p class="muted">${escapeHtml(details)}</p>` : ""}
-        ${places ? `<p>${places}</p>` : ""}
-        <p class="muted small">${dates}</p>
-        <p class="travel-booking-price">${escapeHtml(formatTravelBookingPrice(candidate))}</p>
-        ${candidate.memo ? `<p class="memo">${escapeHtml(candidate.memo).replace(/\n/g, "<br>")}</p>` : ""}
+        ${details ? `<p class="travel-booking-provider muted">${escapeHtml(details)}</p>` : ""}
+        ${isTransport && (candidate.departure_name || candidate.arrival_name) ? `
+          <p class="travel-booking-route">
+            ${candidate.departure_name ? escapeHtml(candidate.departure_name) : ""}
+            ${candidate.departure_name && candidate.arrival_name ? `<span aria-hidden="true"> → </span>` : ""}
+            ${candidate.arrival_name ? escapeHtml(candidate.arrival_name) : ""}
+          </p>
+        ` : ""}
+        ${(isTransport ? candidate.departure_at || candidate.arrival_at : candidate.check_in_at || candidate.check_out_at) ? `
+          <div class="travel-booking-timeline ${isTransport ? "is-transport" : "is-accommodation"}">
+            ${(isTransport ? candidate.departure_at : candidate.check_in_at) ? `
+              <div class="travel-booking-timepoint">
+                <span>${isTransport ? "출발" : "체크인"}</span>
+                <strong>${escapeHtml(formatDateTime(isTransport ? candidate.departure_at : candidate.check_in_at))}</strong>
+              </div>
+            ` : ""}
+            ${(isTransport ? candidate.departure_at && candidate.arrival_at : candidate.check_in_at && candidate.check_out_at) ? `<span class="travel-booking-timeline-track" aria-hidden="true"></span>` : ""}
+            ${(isTransport ? candidate.arrival_at : candidate.check_out_at) ? `
+              <div class="travel-booking-timepoint is-end">
+                <span>${isTransport ? "도착" : "체크아웃"}</span>
+                <strong>${escapeHtml(formatDateTime(isTransport ? candidate.arrival_at : candidate.check_out_at))}</strong>
+              </div>
+            ` : ""}
+          </div>
+        ` : ""}
+        ${candidate.price_amount !== null && candidate.price_amount !== undefined ? `<p class="travel-booking-price">${escapeHtml(formatTravelBookingPrice(candidate))}</p>` : ""}
+        ${candidate.memo ? `<p class="memo travel-booking-memo">${escapeHtml(candidate.memo).replace(/\n/g, "<br>")}</p>` : ""}
       </div>
-      <div class="place-candidate-actions">
-        ${bookingUrl ? `<a class="button secondary" href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer">예약 링크</a>` : ""}
+      <div class="place-candidate-actions travel-booking-candidate-actions">
+        ${canEdit ? `<button type="button" class="add-booking-candidate-to-itinerary-btn" data-id="${candidate.id}">일정에 추가</button>` : ""}
+        <div class="travel-booking-secondary-actions">
+          ${bookingUrl ? `<a class="button secondary" href="${escapeHtml(bookingUrl)}" target="_blank" rel="noopener noreferrer">예약 링크</a>` : ""}
         ${canEdit ? `
-          <button type="button" class="add-booking-candidate-to-itinerary-btn" data-id="${candidate.id}">일정에 추가</button>
           <button type="button" class="edit-travel-booking-candidate-btn secondary" data-id="${candidate.id}">수정</button>
           <button type="button" class="delete-travel-booking-candidate-btn secondary" data-id="${candidate.id}">삭제</button>
         ` : ""}
+        </div>
       </div>
     </article>
   `;
