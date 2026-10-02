@@ -46,3 +46,6 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         status_code=422,
         content={"detail": "요청 값이 올바르지 않습니다.", "code": "VALIDATION_ERROR"},
     )
+@app.get("/health")
+def health():
+    return {"status": "ok"}
