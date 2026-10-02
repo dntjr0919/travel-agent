@@ -5,6 +5,47 @@ from tests.conftest import register_and_login
 from tests.test_trips import create_trip
 
 
+def test_auth_pages_preserve_forms_fields_and_navigation(client):
+    pages = {
+        "/login": (
+            'id="login-form"',
+            'name="email"',
+            'name="password"',
+            'href="/register"',
+            'href="/forgot-password"',
+        ),
+        "/register": (
+            'id="register-form"',
+            'name="email"',
+            'name="display_name"',
+            'name="password"',
+            'href="/login"',
+        ),
+        "/forgot-password": (
+            'id="forgot-form"',
+            'name="email"',
+            'id="forgot-error"',
+            'id="forgot-result"',
+            'href="/login"',
+        ),
+        "/reset-password/test-token": (
+            'id="reset-form"',
+            'name="new_password"',
+            'name="confirm_password"',
+            'id="reset-error"',
+            'id="reset-success"',
+            'href="/login"',
+        ),
+    }
+
+    for path, expected_markup in pages.items():
+        res = client.get(path)
+
+        assert res.status_code == 200
+        for expected in expected_markup:
+            assert expected in res.text
+
+
 def test_trip_detail_redirects_to_login_when_not_authenticated(client):
     res = client.get("/trips/1", follow_redirects=False)
 
