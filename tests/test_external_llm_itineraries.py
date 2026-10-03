@@ -109,6 +109,22 @@ def test_valid_item_and_google_url_are_parsed_without_trusting_map_ids():
     assert result.end_at.isoformat() == "2026-11-02T10:00:00+09:00"
 
 
+def test_trip_timezone_is_applied_to_local_times():
+    trip = SimpleNamespace(start_date=date(2027, 1, 15), end_date=date(2027, 1, 20), timezone="Asia/Tokyo")
+    result = parse_external_llm_draft(
+        make_document(make_item(date="2027-01-17", start_time="16:35", end_time="18:30")), trip
+    )[0]
+    assert result.start_at.isoformat() == "2027-01-17T16:35:00+09:00"
+
+
+def test_invalid_trip_timezone_is_rejected_without_utc_fallback():
+    trip = SimpleNamespace(start_date=date(2027, 1, 15), end_date=date(2027, 1, 20), timezone="Invalid/Zone")
+    with pytest.raises(AppError) as exc_info:
+        parse_external_llm_draft(make_document(make_item(date="2027-01-17")), trip)
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.code == "EXTERNAL_LLM_INVALID_TIMEZONE"
+
+
 def test_fenced_json_is_accepted_and_invalid_json_is_rejected():
     raw = "```json\n" + make_document(make_item()) + "\n```"
     assert parse_external_llm_draft(raw, TRIP)[0].valid

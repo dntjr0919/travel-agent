@@ -10,6 +10,7 @@
     </div>
     <a class="button trips-create-button" href="/trips/new">+ 새 여행 만들기</a>
   </header>
+  <p id="trip-list-error" class="error-text" role="alert" aria-live="polite"></p>
   <div id="trip-list" class="trip-list"></div>
   <p id="trip-empty" class="empty-state trip-empty-state" style="display:none">
     <strong>아직 만든 여행이 없어요</strong>
@@ -21,16 +22,16 @@
 {% block scripts %}
 <script>
 requireLogin().then(async () => {
+  const listEl = document.getElementById("trip-list");
+  const emptyEl = document.getElementById("trip-empty");
+  const errorEl = document.getElementById("trip-list-error");
+  const roleLabel = { owner: "Owner", editor: "Editor", viewer: "Viewer" };
+
+  async function loadTrips() {
   const res = await apiFetch("/api/trips");
   if (!res.ok) return;
   const trips = await res.json();
-  const listEl = document.getElementById("trip-list");
-  const emptyEl = document.getElementById("trip-empty");
-  if (trips.length === 0) {
-    emptyEl.style.display = "block";
-    return;
-  }
-  const roleLabel = { owner: "Owner", editor: "Editor", viewer: "Viewer" };
+  emptyEl.style.display = trips.length === 0 ? "block" : "none";
   listEl.innerHTML = trips.map(t => `
     <a class="card trip-card" href="/trips/${t.id}">
       <div class="trip-card-heading">
@@ -42,8 +43,30 @@ requireLogin().then(async () => {
         <p class="trip-card-timezone">${escapeHtml(t.timezone)}</p>
       </div>
       ${t.my_role ? `<span class="badge role-${escapeHtml(t.my_role)}">${escapeHtml(roleLabel[t.my_role] || t.my_role)}</span>` : ""}
+      ${t.my_role === "owner" ? `<button type="button" class="secondary trip-delete-button" data-trip-id="${t.id}">삭제</button>` : ""}
     </a>
   `).join("");
+  }
+
+  listEl.addEventListener("click", async (event) => {
+    const button = event.target.closest(".trip-delete-button");
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    errorEl.textContent = "";
+    if (!window.confirm("이 여행과 연결된 일정 데이터를 삭제합니다. 계속하시겠습니까?")) return;
+    button.disabled = true;
+    const res = await apiFetch(`/api/trips/${button.dataset.tripId}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      errorEl.textContent = body.detail || "여행을 삭제하지 못했습니다.";
+      button.disabled = false;
+      return;
+    }
+    await loadTrips();
+  });
+
+  await loadTrips();
 });
 </script>
 {% endblock %}

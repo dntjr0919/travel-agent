@@ -158,9 +158,13 @@ def _validation_message(error: ValidationError) -> str:
 
 def _trip_timezone(trip: Trip) -> ZoneInfo:
     try:
-        return ZoneInfo(trip.timezone)
+        return ZoneInfo(trip.timezone or "Asia/Seoul")
     except Exception:
-        return ZoneInfo("UTC")
+        raise AppError(
+            422,
+            "EXTERNAL_LLM_INVALID_TIMEZONE",
+            "여행 시간대 설정이 올바르지 않습니다. 예: Asia/Tokyo",
+        ) from None
 
 
 def parse_external_llm_draft(raw_json: str, trip: Trip) -> list[ExternalLlmDraftItemResult]:

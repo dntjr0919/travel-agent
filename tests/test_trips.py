@@ -57,3 +57,15 @@ def test_invalid_date_range_rejected(client):
     )
     assert res.status_code == 422
     assert res.json()["code"] == "INVALID_DATE_RANGE"
+
+
+def test_owner_can_delete_trip_and_others_remain(client):
+    register_and_login(client, "owner-delete@example.com")
+    first = create_trip(client)
+    second = create_trip(client)
+
+    assert client.delete(f"/api/trips/{first['id']}").status_code == 204
+
+    remaining = [t['id'] for t in client.get("/api/trips").json()]
+    assert remaining == [second['id']]
+

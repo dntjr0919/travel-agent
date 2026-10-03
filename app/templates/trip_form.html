@@ -26,7 +26,23 @@
         </label>
       </div>
       <label>시간대
-        <input type="text" name="timezone" value="Asia/Seoul" required />
+        <select name="timezone" required>
+          <option value="Asia/Seoul" selected>한국 (서울)</option>
+          <option value="Asia/Tokyo">일본 (도쿄)</option>
+          <option value="Asia/Shanghai">중국 (상하이)</option>
+          <option value="Asia/Taipei">대만 (타이베이)</option>
+          <option value="Asia/Hong_Kong">홍콩</option>
+          <option value="Asia/Bangkok">태국 (방콕)</option>
+          <option value="Asia/Ho_Chi_Minh">베트남 (호찌민)</option>
+          <option value="Asia/Singapore">싱가포르</option>
+          <option value="Pacific/Guam">괌</option>
+          <option value="Australia/Sydney">호주 동부 (시드니)</option>
+          <option value="America/Los_Angeles">미국 서부 (로스앤젤레스)</option>
+          <option value="America/New_York">미국 동부 (뉴욕)</option>
+          <option value="Europe/London">영국 (런던)</option>
+          <option value="Europe/Paris">프랑스·중부유럽 (파리)</option>
+          <option value="UTC">UTC</option>
+        </select>
       </label>
       <button class="trip-form-submit" type="submit">여행 생성</button>
     </form>
