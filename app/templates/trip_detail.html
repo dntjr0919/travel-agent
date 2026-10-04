@@ -2174,8 +2174,11 @@ function updateTravelMapItineraryDateOptions() {
   ].join("");
 
   const itineraryDates = currentItineraries
-    .map((item) => (item.start_at ? String(item.start_at).slice(0, 10) : null))
-    .filter((value) => Boolean(value));
+  .map((item) => {
+    const startAt = getItemStartAt(item);
+    return startAt ? getTripDateKey(startAt) : null;
+  })
+  .filter(Boolean);
 
   const earliestItineraryDate = itineraryDates.length > 0
     ? [...itineraryDates].sort()[0]
@@ -2389,14 +2392,11 @@ function refreshTravelMap() {
       })
       .filter((item) => Number.isFinite(item?.latitude) && Number.isFinite(item?.longitude))
       .filter((item) => {
-        if (selectedDate === "all") {
-          return true;
-        }
-        if (!item.start_at) {
-          return false;
-        }
-        return String(item.start_at).slice(0, 10) === selectedDate;
-      })
+  if (selectedDate === "all") return true;
+  if (!item.start_at) return false;
+
+  return getTripDateKey(item.start_at) === selectedDate;
+})
       .map((item, index) => ({
         itemId: item.id,
         latitude: Number(item.latitude),
@@ -2602,7 +2602,7 @@ function getCalculableItinerariesForDate(selectedDate) {
       }
       return Number(a?.id || 0) - Number(b?.id || 0);
     })
-    .filter((item) => item?.start_at && String(item.start_at).slice(0, 10) === selectedDate)
+    .filter((item) => item?.start_at && getTripDateKey(item.start_at) === selectedDate)
     .filter((item) => {
       const latitude = item?.latitude;
       const longitude = item?.longitude;
@@ -3913,11 +3913,43 @@ async function deletePlaceCandidate(candidateId) {
   alert(data.detail || "장소 후보 삭제에 실패했습니다.");
 }
 
+function getTripDateKey(iso) {
+  if (!iso) {
+    return "날짜 미정";
+  }
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) {
+    return "날짜 미정";
+  }
+
+  const timeZone = currentTrip?.timezone || "Asia/Seoul";
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value])
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getItemStartAt(item) {
+  return item?.start_at ?? null;
+}
+
 function groupByDate(items) {
   const groups = {};
 
   for (const item of items) {
-    const key = item.start_at ? item.start_at.slice(0, 10) : "날짜 미정";
+    const startAt = getItemStartAt(item);
+    const key = getTripDateKey(startAt);
 
     if (!groups[key]) {
       groups[key] = [];
@@ -3928,19 +3960,22 @@ function groupByDate(items) {
 
   for (const groupItems of Object.values(groups)) {
     groupItems.sort((a, b) => {
-      if (!a.start_at && !b.start_at) {
+      const aStartAt = getItemStartAt(a);
+      const bStartAt = getItemStartAt(b);
+
+      if (!aStartAt && !bStartAt) {
         return a.id - b.id;
       }
 
-      if (!a.start_at) {
+      if (!aStartAt) {
         return 1;
       }
 
-      if (!b.start_at) {
+      if (!bStartAt) {
         return -1;
       }
 
-      return a.start_at.localeCompare(b.start_at);
+      return new Date(aStartAt) - new Date(bStartAt);
     });
   }
 
