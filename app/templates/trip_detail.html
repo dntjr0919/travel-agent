@@ -185,7 +185,16 @@
   </form>
   <p id="quick-time-edit-error" class="error-text"></p>
 </div>
-
+<button
+  id="open-tools-floating-btn"
+  type="button"
+  class="trip-tools-floating-btn"
+  aria-label="여행 도구 열기"
+  title="여행 도구 열기"
+>
+  <span aria-hidden="true">☰</span>
+  <span>도구</span>
+</button>
 <div id="trip-tools-backdrop" class="trip-tools-backdrop" hidden></div>
 
 <aside
@@ -1335,6 +1344,7 @@ if (canEdit) {
 }
 
   document.getElementById("open-tools-btn")?.addEventListener("click", openToolsDrawer);
+  document.getElementById("open-tools-floating-btn")?.addEventListener("click", openToolsDrawer);
 
   setExternalBookingPanelVisibility(canEdit);
   setAiItineraryPanelVisibility(canEdit);
@@ -1555,11 +1565,9 @@ function clearItemPlaceSearchStatus() {
   statusEl.style.color = "";
 }
 
-function hideItemPlaceSearchPanel({ keepStatus = false } = {}) {
+function hideItemPlaceSearchPanel(keepStatus = false) {
   const panel = document.getElementById("item-place-search-panel");
   const toggleBtn = document.getElementById("item-place-search-toggle-btn");
-  const scopeSelect = document.getElementById("item-place-search-scope");
-  const queryInput = document.getElementById("item-place-search-query");
   const errorEl = document.getElementById("item-place-search-error");
   const loadingEl = document.getElementById("item-place-search-loading");
   const resultsEl = document.getElementById("item-place-search-results");
@@ -1571,14 +1579,6 @@ function hideItemPlaceSearchPanel({ keepStatus = false } = {}) {
 
   if (toggleBtn) {
     toggleBtn.setAttribute("aria-expanded", "false");
-  }
-
-  if (scopeSelect) {
-    scopeSelect.value = "domestic";
-  }
-
-  if (queryInput) {
-    queryInput.value = "";
   }
 
   if (errorEl) {
@@ -1606,7 +1606,9 @@ function hideItemPlaceSearchPanel({ keepStatus = false } = {}) {
 function showItemPlaceSearchPanel() {
   const panel = document.getElementById("item-place-search-panel");
   const toggleBtn = document.getElementById("item-place-search-toggle-btn");
+  const scopeSelect = document.getElementById("item-place-search-scope");
   const queryInput = document.getElementById("item-place-search-query");
+  const form = document.getElementById("item-form");
 
   if (!panel) {
     return;
@@ -1616,6 +1618,16 @@ function showItemPlaceSearchPanel() {
 
   if (toggleBtn) {
     toggleBtn.setAttribute("aria-expanded", "true");
+  }
+
+  if (scopeSelect) {
+    scopeSelect.value = currentTrip?.timezone === "Asia/Seoul"
+      ? "domestic"
+      : "international";
+  }
+
+  if (queryInput && !queryInput.value.trim()) {
+    queryInput.value = form?.location_name?.value.trim() || "";
   }
 
   queryInput?.focus();
@@ -4404,11 +4416,14 @@ function openItineraryFormFromPlace(place) {
 function openItemForm(item) {
   const panel = document.getElementById("item-form-panel");
   const form = document.getElementById("item-form");
+  const scopeSelect = document.getElementById("item-place-search-scope");
+  const queryInput = document.getElementById("item-place-search-query");
 
   closeToolsDrawer();
   hideTripEditForm();
   clearItemPlaceSearchStatus();
   hideItemPlaceSearchPanel();
+    
   document.getElementById("item-form-error").textContent = "";
   document.getElementById("conflict-banner").style.display = "none";
 
@@ -4448,9 +4463,19 @@ function openItemForm(item) {
   form.latitude.value = itemHasValidCoordinates ? String(itemLatitudeValue) : "";
   form.longitude.value = itemHasValidCoordinates ? String(itemLongitudeValue) : "";
 
+if (queryInput) {
+  queryInput.value = item?.location_name?.trim() || "";
+}
+
   if (!item) {
     resetItemPlaceSearchState();
   }
+
+  if (scopeSelect) {
+  scopeSelect.value = currentTrip?.timezone === "Asia/Seoul"
+    ? "domestic"
+    : "international";
+}
 
   panel.scrollIntoView({ behavior: "smooth" });
 }

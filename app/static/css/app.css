@@ -3584,3 +3584,52 @@ body:not(:has(.auth-card)) .nav-guest-links {
     grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
   }
 }
+.trip-tools-floating-btn {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 90;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+
+  min-height: 48px;
+  padding: 0.7rem 0.9rem;
+
+  border: 1px solid var(--ui-primary-strong, #1f6f6b);
+  border-radius: 999px;
+
+  background: var(--ui-primary, #25857f);
+  color: #ffffff;
+
+  box-shadow: 0 8px 20px rgba(29, 49, 64, 0.22);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trip-tools-floating-btn:hover {
+  background: var(--ui-primary-strong, #1f6f6b);
+}
+
+.trip-tools-floating-btn:focus-visible {
+  outline: 3px solid rgba(37, 133, 127, 0.35);
+  outline-offset: 3px;
+}
+
+.trip-tools-floating-btn span:first-child {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+@media (max-width: 760px) {
+  .trip-tools-floating-btn {
+    right: 1rem;
+    bottom: 1rem;
+    min-width: 52px;
+    min-height: 52px;
+    padding: 0.75rem 0.9rem;
+  }
+}
