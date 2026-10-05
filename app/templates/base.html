@@ -11,7 +11,8 @@
   <meta name="apple-mobile-web-app-title" content="Travel Planner" />
   <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
   <title>{% block title %}Travel Planner{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/app.css" />
+  {% set static_version = "20261006-1" %}
+  <link rel="stylesheet" href="/static/css/app.css?v={{ static_version }}" />
 </head>
 <body>
   <header class="topbar">
@@ -28,7 +29,7 @@
   <main class="container">
     {% block content %}{% endblock %}
   </main>
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v={{ static_version }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
