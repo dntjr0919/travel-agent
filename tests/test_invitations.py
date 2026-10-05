@@ -4,7 +4,17 @@ from fastapi.testclient import TestClient
 
 from tests.conftest import register_and_login
 from tests.test_trips import create_trip
+import pytest
 
+@pytest.fixture(autouse=True)
+def block_invitation_email(monkeypatch):
+    def fake_send_invitation_email(*args, **kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "app.routers.collaborations.send_invitation_email",
+        fake_send_invitation_email,
+    )
 
 def invite_member(client: TestClient, trip_id: int, email: str, role: str) -> dict:
     res = client.post(f"/api/trips/{trip_id}/invitations", json={"email": email, "role": role})
