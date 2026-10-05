@@ -3626,8 +3626,13 @@ body:not(:has(.auth-card)) .nav-guest-links {
 
 @media (max-width: 760px) {
   .trip-tools-floating-btn {
+    position: fixed;
+    top: auto;
     right: 1rem;
-    bottom: 1rem;
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+    left: auto;
+    z-index: 1000;
+
     min-width: 52px;
     min-height: 52px;
     padding: 0.75rem 0.9rem;
