@@ -3633,3 +3633,130 @@ body:not(:has(.auth-card)) .nav-guest-links {
     padding: 0.75rem 0.9rem;
   }
 }
+
+.invite-url-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.invite-url-row code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.invite-url-copy-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+
+  border: 1px solid var(--ui-border, #cbd5e1);
+  border-radius: 7px;
+
+  background: var(--ui-surface, #ffffff);
+  color: var(--ui-text, #1d313f);
+
+  cursor: pointer;
+}
+
+.invite-url-copy-btn:hover {
+  border-color: var(--ui-primary, #25857f);
+  color: var(--ui-primary-strong, #1f6f6b);
+  background: var(--ui-primary-soft, #e8f4f2);
+}
+
+.invite-url-copy-btn:focus-visible {
+  outline: 3px solid rgba(37, 133, 127, 0.3);
+  outline-offset: 2px;
+}
+@media (max-width: 760px) {
+  .member-table {
+    display: block;
+    width: 100%;
+    overflow: visible;
+  }
+
+  .member-table thead {
+    display: none;
+  }
+
+  .member-table,
+  .member-table tbody,
+  .member-table tr,
+  .member-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .member-table tr {
+    margin-bottom: 0.75rem;
+    padding: 0.9rem;
+
+    border: 1px solid var(--ui-border, #d7dde3);
+    border-radius: 10px;
+
+    background: var(--ui-surface, #ffffff);
+  }
+
+  .member-table td {
+    padding: 0;
+    border: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  .member-table td + td {
+    margin-top: 0.35rem;
+  }
+
+  .member-table td:nth-child(1) {
+    color: var(--ui-text, #1d313f);
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  .member-table td:nth-child(2) {
+    color: var(--ui-text-muted, #64748b);
+    font-size: 0.86rem;
+  }
+
+  .member-table td:nth-child(3) {
+    display: inline-flex;
+    width: auto;
+    margin-top: 0.55rem;
+    padding: 0.25rem 0.55rem;
+
+    border-radius: 999px;
+
+    background: var(--ui-primary-soft, #e8f4f2);
+    color: var(--ui-primary-strong, #1f6f6b);
+
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .member-table td:nth-child(4) {
+    margin-top: 0.75rem;
+  }
+
+  .member-table td:nth-child(4):empty {
+    display: none;
+  }
+
+  .member-table td:nth-child(4) select,
+  .member-table td:nth-child(4) button {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .member-table td:nth-child(4) button {
+    margin-top: 0.45rem;
+  }
+}

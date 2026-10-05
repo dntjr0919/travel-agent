@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -15,7 +15,8 @@ from app.services.invitation_service import (
     remove_member,
     update_member_role,
 )
-from app.services.permission_service import require_member
+from app.services.permission_service import require_member, require_trip
+from app.services.email_service import send_invitation_email
 
 router = APIRouter(prefix="/api", tags=["collaboration"])
 
@@ -45,10 +46,20 @@ def get_members(
 def create_trip_invitation(
     trip_id: int,
     data: InvitationCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> InvitationOut:
     invitation, invite_url = create_invitation(db, trip_id, current_user, data)
+    trip_title = require_trip(db, trip_id).title
+    background_tasks.add_task(
+        send_invitation_email,
+        to_email=invitation.email,
+        invite_url=invite_url,
+        trip_title=trip_title,
+        inviter_name=current_user.display_name,
+        role=invitation.role,
+    )
     return InvitationOut(
         id=invitation.id,
         trip_id=invitation.trip_id,

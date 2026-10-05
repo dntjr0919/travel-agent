@@ -33,15 +33,16 @@ def send_password_reset_email(to_email: str, reset_url: str) -> None:
         logger.info("EMAIL_ENABLED=false 이므로 비밀번호 재설정 메일을 보내지 않습니다.")
         return
 
-    _validate_smtp_settings()
+    try:
+        _validate_smtp_settings()
 
-    message = EmailMessage()
-    message["Subject"] = "[Travel Planner] 비밀번호 재설정"
-    message["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
-    message["To"] = to_email
+        message = EmailMessage()
+        message["Subject"] = "[Travel Planner] 비밀번호 재설정"
+        message["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
+        message["To"] = to_email
 
-    message.set_content(
-        f"""안녕하세요.
+        message.set_content(
+            f"""안녕하세요.
 
 Travel Planner 비밀번호 재설정 요청이 접수되었습니다.
 
@@ -53,11 +54,90 @@ Travel Planner 비밀번호 재설정 요청이 접수되었습니다.
 
 본인이 요청하지 않았다면 이 이메일을 무시하세요.
 """
+        )
+
+        with smtplib.SMTP(
+            host=settings.smtp_host,
+            port=settings.smtp_port,
+            local_hostname="localhost",
+            timeout=15,
+        ) as server:
+            if settings.smtp_use_tls:
+                server.starttls()
+
+            if settings.smtp_username:
+                server.login(
+                    settings.smtp_username,
+                    settings.smtp_password,
+                )
+
+            server.send_message(message)
+
+        logger.info("비밀번호 재설정 이메일 발송 완료: %s", to_email)
+
+    except Exception:
+        logger.exception("비밀번호 재설정 이메일 발송 실패: %s", to_email)
+
+
+def send_invitation_email(
+    to_email: str,
+    invite_url: str,
+    trip_title: str,
+    inviter_name: str,
+    role: str,
+) -> None:
+    """여행 공동 작업 초대 링크를 이메일로 발송한다. 실패해도 예외를 전파하지 않는다."""
+    if not settings.email_enabled:
+        logger.info("EMAIL_ENABLED=false 이므로 초대 이메일을 보내지 않습니다.")
+        return
+
+    try:
+        _send_invitation_email(to_email, invite_url, trip_title, inviter_name, role)
+    except Exception:
+        logger.exception("여행 초대 이메일 발송 실패: %s", to_email)
+
+
+def _send_invitation_email(
+    to_email: str,
+    invite_url: str,
+    trip_title: str,
+    inviter_name: str,
+    role: str,
+) -> None:
+    _validate_smtp_settings()
+
+    role_label = {
+        "editor": "편집자",
+        "viewer": "조회자",
+    }.get(role, role)
+
+    message = EmailMessage()
+    message["Subject"] = f"[Travel Planner] {trip_title} 여행 초대"
+    message["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
+    message["To"] = to_email
+
+    message.set_content(
+        f"""안녕하세요.
+
+{inviter_name}님이 Travel Planner의 여행에 초대했습니다.
+
+여행: {trip_title}
+권한: {role_label}
+
+아래 링크를 열어 초대를 수락하세요.
+
+{invite_url}
+
+초대 링크는 {settings.invitation_expire_hours}시간 동안 유효합니다.
+
+본인이 예상하지 못한 초대라면 이 이메일을 무시하세요.
+"""
     )
 
     with smtplib.SMTP(
         host=settings.smtp_host,
         port=settings.smtp_port,
+        local_hostname="localhost",
         timeout=15,
     ) as server:
         if settings.smtp_use_tls:
@@ -71,4 +151,4 @@ Travel Planner 비밀번호 재설정 요청이 접수되었습니다.
 
         server.send_message(message)
 
-    logger.info("비밀번호 재설정 이메일 발송 완료: %s", to_email)
+    logger.info("여행 초대 이메일 발송 완료: %s", to_email)    

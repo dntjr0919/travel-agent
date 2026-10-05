@@ -24,6 +24,45 @@ def test_owner_can_create_editor_invitation(client):
     assert "invite_url" in invitation
 
 
+def test_invitation_schedules_email_task(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.routers.collaborations.send_invitation_email", lambda **kw: calls.append(kw))
+    register_and_login(client, "owner-mail@example.com", display_name="Owner")
+    trip = create_trip(client)
+    invitation = invite_member(client, trip["id"], "guest-mail@example.com", "viewer")
+
+    assert invitation["invite_url"]
+    assert len(calls) == 1
+    assert calls[0]["to_email"] == "guest-mail@example.com"
+    assert calls[0]["invite_url"] == invitation["invite_url"]
+    assert calls[0]["trip_title"] == trip["title"]
+    assert calls[0]["inviter_name"] == "Owner"
+    assert calls[0]["role"] == "viewer"
+
+
+def test_invitation_works_when_email_disabled(client, monkeypatch):
+    monkeypatch.setattr("app.services.email_service.settings.email_enabled", False)
+    register_and_login(client, "owner-off@example.com")
+    trip = create_trip(client)
+    invitation = invite_member(client, trip["id"], "guest-off@example.com", "editor")
+    assert "invite_url" in invitation
+
+
+def test_invitation_email_smtp_failure_does_not_raise(monkeypatch):
+    from app.services import email_service
+
+    def boom(*args, **kwargs):
+        raise OSError("smtp down")
+
+    monkeypatch.setattr(email_service.settings, "email_enabled", True)
+    monkeypatch.setattr(email_service.settings, "smtp_host", "smtp.invalid")
+    monkeypatch.setattr(email_service.settings, "smtp_from_email", "from@example.com")
+    monkeypatch.setattr(email_service.settings, "smtp_username", "")
+    monkeypatch.setattr(email_service.smtplib, "SMTP", boom)
+
+    email_service.send_invitation_email("to@example.com", "http://x/invitations/t", "Trip", "Owner", "editor")
+
+
 def test_wrong_email_cannot_accept_invitation(client):
     register_and_login(client, "owner2@example.com")
     trip = create_trip(client)

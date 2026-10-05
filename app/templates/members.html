@@ -8,22 +8,49 @@
 
 <div id="invite-panel" class="card" style="display:none">
   <h2>새 구성원 초대</h2>
+
   <form id="invite-form" class="form">
     <label>이메일
       <input type="email" name="email" required />
     </label>
+
     <label>역할
       <select name="role">
         <option value="editor">Editor</option>
         <option value="viewer">Viewer</option>
       </select>
     </label>
+
     <button type="submit">초대 링크 생성</button>
   </form>
+
   <p id="invite-error" class="error-text"></p>
+
   <div id="invite-result" class="invite-result" style="display:none">
-    <p>개발용 초대 링크 (실제 이메일 발송 없음):</p>
-    <code id="invite-url"></code>
+    <p>
+      초대 이메일 발송을 요청했습니다. 이메일이 보이지 않으면 스팸함을 확인하거나 아래 링크를 직접 공유하세요.
+    </p>
+
+    <div class="invite-url-row">
+      <code id="invite-url"></code>
+
+      <button
+        id="invite-url-copy-btn"
+        type="button"
+        class="invite-url-copy-btn"
+        aria-label="초대 링크 복사"
+        title="초대 링크 복사"
+      >
+        <span aria-hidden="true">⧉</span>
+      </button>
+    </div>
+
+    <p
+      id="invite-url-copy-status"
+      class="muted small"
+      style="display:none"
+      aria-live="polite"
+    ></p>
   </div>
 </div>
 
@@ -31,6 +58,26 @@
 {% endblock %}
 {% block scripts %}
 <script>
+document.getElementById("invite-url-copy-btn").addEventListener("click", async () => {
+  const inviteUrlEl = document.getElementById("invite-url");
+  const statusEl = document.getElementById("invite-url-copy-status");
+  const inviteUrl = inviteUrlEl.textContent.trim();
+
+  if (!inviteUrl) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(inviteUrl);
+    statusEl.textContent = "초대 링크를 복사했습니다.";
+    statusEl.style.display = "block";
+  } catch (error) {
+    console.error("초대 링크 복사 실패:", error);
+    statusEl.textContent = "자동 복사에 실패했습니다. 링크를 길게 누르거나 직접 복사하세요.";
+    statusEl.style.display = "block";
+  }
+});
+
 const TRIP_ID = {{ trip_id }};
 let isOwner = false;
 
