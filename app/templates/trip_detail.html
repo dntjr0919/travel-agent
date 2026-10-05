@@ -190,6 +190,8 @@
   type="button"
   class="trip-tools-floating-btn"
   aria-label="여행 도구 열기"
+  aria-controls="trip-tools-drawer"
+  aria-expanded="false"
   title="여행 도구 열기"
 >
   <span aria-hidden="true">☰</span>
@@ -1344,8 +1346,6 @@ if (canEdit) {
 }
 
   document.getElementById("open-tools-btn")?.addEventListener("click", openToolsDrawer);
-  document.getElementById("open-tools-floating-btn")?.addEventListener("click", openToolsDrawer);
-
   setExternalBookingPanelVisibility(canEdit);
   setAiItineraryPanelVisibility(canEdit);
 }
@@ -4625,8 +4625,14 @@ function openToolsDrawer() {
   document.body.classList.add("tools-drawer-open");
   openToolsBtn?.setAttribute("aria-expanded", "true");
 }
+document
+  .getElementById("open-tools-floating-btn")
+  ?.setAttribute("aria-expanded", "true");
 
 function closeToolsDrawer() {
+  const floatingToolsBtn = document.getElementById(
+    "open-tools-floating-btn"
+  );
   const drawer = document.getElementById("trip-tools-drawer");
   const backdrop = document.getElementById("trip-tools-backdrop");
   const openToolsBtn = document.getElementById("open-tools-btn");
@@ -4634,15 +4640,20 @@ function closeToolsDrawer() {
   if (!drawer || !backdrop) {
     document.body.classList.remove("tools-drawer-open");
     openToolsBtn?.setAttribute("aria-expanded", "false");
+    floatingToolsBtn?.setAttribute("aria-expanded", "false");
     return;
   }
 
   drawer.classList.remove("is-open");
   drawer.setAttribute("aria-hidden", "true");
+
   backdrop.classList.remove("is-open");
   backdrop.hidden = true;
+
   document.body.classList.remove("tools-drawer-open");
+
   openToolsBtn?.setAttribute("aria-expanded", "false");
+  floatingToolsBtn?.setAttribute("aria-expanded", "false");
 }
 
 async function deleteItem(itemId) {
@@ -4893,7 +4904,18 @@ const itineraryRouteBtn = document.getElementById("itinerary-route-btn");
 
 document.getElementById("close-tools-btn")?.addEventListener("click", closeToolsDrawer);
 document.getElementById("trip-tools-backdrop")?.addEventListener("click", closeToolsDrawer);
+document.getElementById("open-tools-floating-btn")?.addEventListener(
+  "click",
+  () => {
+    const drawer = document.getElementById("trip-tools-drawer");
 
+    if (drawer?.classList.contains("is-open")) {
+      closeToolsDrawer();
+    } else {
+      openToolsDrawer();
+    }
+  }
+);
 document.querySelectorAll("[data-tool-accordion-trigger]").forEach((button) => {
   button.addEventListener("click", () => {
     const group = button.closest("[data-tool-accordion-group]");
