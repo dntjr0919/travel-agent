@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import case, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import ValidationError
 
 from app.core.errors import AppError
@@ -23,7 +23,7 @@ def _validate_candidate_fields(values: dict) -> TravelBookingCandidateCreate:
 
 
 def _serialize(db: Session, candidate: TravelBookingCandidate) -> dict:
-    creator = db.get(User, candidate.created_by)
+    creator = candidate.creator if "creator" in candidate.__dict__ else db.get(User, candidate.created_by)
     return {
         "id": candidate.id,
         "trip_id": candidate.trip_id,
@@ -66,6 +66,7 @@ def list_travel_booking_candidates(db: Session, trip_id: int, user_id: int) -> l
     )
     stmt = (
         select(TravelBookingCandidate)
+        .options(joinedload(TravelBookingCandidate.creator))
         .where(TravelBookingCandidate.trip_id == trip_id)
         .order_by(
             TravelBookingCandidate.kind.asc(),

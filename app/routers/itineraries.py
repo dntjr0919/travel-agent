@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.errors import AppError
+from app.core.presence import presence_manager
 from app.models.user import User
 from app.schemas.external_llm_itinerary import (
     ExternalLlmItineraryAnalyzeRequest,
@@ -19,18 +21,17 @@ from app.schemas.itinerary import (
     ItineraryRouteResponse,
     ItineraryUpdate,
 )
+from app.services.external_llm_itinerary_service import parse_external_llm_draft
+from app.services.itinerary_route_service import calculate_itinerary_routes
 from app.services.itinerary_service import (
-    create_itinerary,
     create_itineraries,
+    create_itinerary,
     delete_itinerary,
     get_itinerary,
     list_itineraries,
     update_itinerary,
 )
-from app.services.itinerary_route_service import calculate_itinerary_routes
-from app.services.external_llm_itinerary_service import parse_external_llm_draft
 from app.services.permission_service import require_editor_or_owner, require_trip
-from app.core.errors import AppError
 
 router = APIRouter(prefix="/api", tags=["itineraries"])
 
@@ -70,6 +71,7 @@ def analyze_external_llm_itinerary(
 def import_external_llm_itinerary(
     trip_id: int,
     data: ExternalLlmItineraryImportRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
@@ -102,6 +104,17 @@ def import_external_llm_itinerary(
         for item in selected_items
     ]
     created = create_itineraries(db, trip_id, current_user, create_items)
+    for created_item in created:
+        background_tasks.add_task(
+            presence_manager.broadcast_trip_activity,
+            trip_id,
+            actor_id=current_user.id,
+            actor_name=current_user.display_name,
+            entity_type="itinerary",
+            action="created",
+            entity_id=created_item["id"],
+            title=created_item["title"],
+        )
     return {"created_count": len(created), "items": created}
 
 
@@ -129,10 +142,22 @@ def list_trip_itineraries(
 def create_trip_itinerary(
     trip_id: int,
     data: ItineraryCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    return create_itinerary(db, trip_id, current_user, data)
+    created = create_itinerary(db, trip_id, current_user, data)
+    background_tasks.add_task(
+        presence_manager.broadcast_trip_activity,
+        trip_id,
+        actor_id=current_user.id,
+        actor_name=current_user.display_name,
+        entity_type="itinerary",
+        action="created",
+        entity_id=created["id"],
+        title=created["title"],
+    )
+    return created
 
 
 @router.get("/itineraries/{item_id}", response_model=ItineraryOut)
@@ -146,10 +171,22 @@ def get_single_itinerary(
 def patch_itinerary(
     item_id: int,
     data: ItineraryUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    return update_itinerary(db, item_id, current_user, data)
+    updated = update_itinerary(db, item_id, current_user, data)
+    background_tasks.add_task(
+        presence_manager.broadcast_trip_activity,
+        updated["trip_id"],
+        actor_id=current_user.id,
+        actor_name=current_user.display_name,
+        entity_type="itinerary",
+        action="updated",
+        entity_id=updated["id"],
+        title=updated["title"],
+    )
+    return updated
 
 
 @router.delete("/itineraries/{item_id}", status_code=204, response_model=None)

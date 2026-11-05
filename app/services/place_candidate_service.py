@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import AppError
 from app.models.place_candidate import PlaceCandidate
@@ -16,7 +16,7 @@ from app.services.permission_service import (
 
 
 def _serialize(db: Session, candidate: PlaceCandidate) -> dict:
-    creator = db.get(User, candidate.created_by)
+    creator = candidate.creator if "creator" in candidate.__dict__ else db.get(User, candidate.created_by)
 
     return {
         "id": candidate.id,
@@ -47,6 +47,7 @@ def list_place_candidates(
 
     stmt = (
         select(PlaceCandidate)
+        .options(joinedload(PlaceCandidate.creator))
         .where(PlaceCandidate.trip_id == trip_id)
         .order_by(PlaceCandidate.created_at.desc())
     )

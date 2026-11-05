@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -9,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import AppError
+from app.core.security import hash_token
 from app.models.invitation import Invitation
 from app.models.trip import TripMember, TripMemberStatus
 from app.models.user import User
@@ -16,10 +16,6 @@ from app.schemas.invitation import InvitationCreate
 from app.services.permission_service import require_owner, require_trip
 
 settings = get_settings()
-
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def create_invitation(db: Session, trip_id: int, inviter: User, data: InvitationCreate) -> tuple[Invitation, str]:
@@ -31,7 +27,7 @@ def create_invitation(db: Session, trip_id: int, inviter: User, data: Invitation
         trip_id=trip_id,
         email=data.email,
         role=data.role,
-        token_hash=_hash_token(raw_token),
+        token_hash=hash_token(raw_token),
         invited_by=inviter.id,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.invitation_expire_hours),
     )
@@ -44,7 +40,7 @@ def create_invitation(db: Session, trip_id: int, inviter: User, data: Invitation
 
 
 def accept_invitation(db: Session, token: str, user: User) -> Invitation:
-    token_hash = _hash_token(token)
+    token_hash = hash_token(token)
     invitation = db.scalar(select(Invitation).where(Invitation.token_hash == token_hash))
     if invitation is None:
         raise AppError(404, "INVITATION_NOT_FOUND", "초대장을 찾을 수 없습니다.")

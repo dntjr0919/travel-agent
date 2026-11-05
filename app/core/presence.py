@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from datetime import datetime, timezone
 
 from fastapi import WebSocket
 
@@ -74,6 +75,48 @@ class TripPresenceManager:
         message = {
             "type": "presence",
             "users": users,
+        }
+
+        disconnected_sockets: list[WebSocket] = []
+
+        for websocket in sockets:
+            try:
+                await websocket.send_json(message)
+            except Exception:
+                disconnected_sockets.append(websocket)
+
+        for websocket in disconnected_sockets:
+            await self._remove_dead_socket(trip_id, websocket)
+
+    async def broadcast_trip_activity(
+        self,
+        trip_id: int,
+        *,
+        actor_id: int,
+        actor_name: str,
+        entity_type: str,
+        action: str,
+        entity_id: int,
+        title: str,
+    ) -> None:
+        """같은 여행을 보고 있는 연결된 소켓들에 변경 이벤트를 전송한다."""
+        async with self._lock:
+            sockets = [
+                websocket
+                for user_connections in self._connections.get(trip_id, {}).values()
+                for websocket in user_connections
+            ]
+
+        message = {
+            "type": "trip_activity",
+            "trip_id": trip_id,
+            "actor_id": actor_id,
+            "actor_name": actor_name,
+            "entity_type": entity_type,
+            "action": action,
+            "entity_id": entity_id,
+            "title": title,
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
 
         disconnected_sockets: list[WebSocket] = []

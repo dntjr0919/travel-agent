@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import Float, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base, TZDateTime
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+from app.core.database import Base, TZDateTime, utcnow
 
 
 class TravelBookingCandidate(Base):
@@ -34,8 +30,8 @@ class TravelBookingCandidate(Base):
     check_in_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     check_out_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
     trip = relationship("Trip", back_populates="booking_candidates")
     creator = relationship("User", foreign_keys=[created_by])

@@ -1,7 +1,30 @@
 from __future__ import annotations
 
-from app.core.config import get_settings
+from app.core.config import (
+    DEFAULT_RESERVATION_ANALYSIS_MODEL,
+    RESERVATION_ANALYSIS_MODEL_NAMES,
+    get_settings,
+)
 from app.core.errors import AppError
+
+
+def strip_markdown_code_fence(text: str) -> str:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if len(lines) >= 2 and lines[-1].strip() == "```":
+            cleaned = "\n".join(lines[1:-1]).strip()
+        elif len(lines) >= 1:
+            cleaned = "\n".join(lines[1:]).strip()
+    return cleaned
+
+
+def resolve_gemini_analysis_model(model: str | None, *, invalid_code: str) -> str:
+    model_key = (model or "").strip() or DEFAULT_RESERVATION_ANALYSIS_MODEL
+    model_name = RESERVATION_ANALYSIS_MODEL_NAMES.get(model_key)
+    if not model_name:
+        raise AppError(422, invalid_code, "지원하지 않는 분석 모델입니다.")
+    return model_name
 
 RESERVATION_ANALYSIS_PROMPT = """
 이미지에 포함된 예약 정보를 JSON으로만 반환하세요.

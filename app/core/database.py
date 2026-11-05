@@ -35,6 +35,10 @@ class Base(DeclarativeBase):
     pass
 
 
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class TZDateTime(TypeDecorator):
     """SQLite는 timezone 정보를 유지하지 못하므로, UTC로 정규화해 저장하고 로드 시 tz-aware(UTC)로 복원한다."""
 

@@ -14,6 +14,7 @@ from app.services.external_llm_itinerary_service import (
     GOOGLE_MAPS_HOSTS,
     KAKAO_MAPS_HOSTS,
     NAVER_MAPS_HOSTS,
+    extract_json_object_text,
     is_allowed_map_url,
     parse_external_llm_draft,
 )
@@ -130,6 +131,27 @@ def test_fenced_json_is_accepted_and_invalid_json_is_rejected():
     assert parse_external_llm_draft(raw, TRIP)[0].valid
     with pytest.raises(AppError, match="JSON 형식"):
         parse_external_llm_draft('{"version": 1,', TRIP)
+
+
+@pytest.mark.parametrize(
+    "wrapper_template",
+    [
+        "아래는 요청하신 여행 일정입니다!\n\n{json_doc}\n\n즐거운 여행 되세요!",
+        "요청하신 조건(오전 박물관 방문)을 반영했습니다.\n```json\n{json_doc}\n```\n추가 수정이 필요하면 말씀해 주세요.",
+        "참고 예시: {{\"note\": \"이 객체는 무시됨\"}}\n실제 결과:\n```\n{json_doc}\n```",
+    ],
+)
+def test_extract_json_object_text_and_parse_draft_ignore_surrounding_prose(wrapper_template):
+    doc = make_document(make_item(title="외부 LLM 추출 테스트"))
+    raw = wrapper_template.format(json_doc=doc)
+    extracted = json.loads(extract_json_object_text(raw))
+    assert extracted["version"] == 1
+    assert extracted["items"][0]["title"] == "외부 LLM 추출 테스트"
+
+    parsed = parse_external_llm_draft(raw, TRIP)
+    assert len(parsed) == 1
+    assert parsed[0].valid
+    assert parsed[0].title == "외부 LLM 추출 테스트"
 
 
 def test_deeply_nested_json_is_reported_as_invalid_input():

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -9,16 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password, hash_token, verify_password
 from app.models.password_reset import PasswordResetToken
 from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest
 
 settings = get_settings()
-
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def register_user(db: Session, data: RegisterRequest) -> User:
@@ -53,7 +48,7 @@ def request_password_reset(db: Session, email: str) -> str | None:
     raw_token = secrets.token_urlsafe(32)
     reset_token = PasswordResetToken(
         user_id=user.id,
-        token_hash=_hash_token(raw_token),
+        token_hash=hash_token(raw_token),
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.password_reset_expire_minutes),
     )
     db.add(reset_token)
@@ -63,7 +58,7 @@ def request_password_reset(db: Session, email: str) -> str | None:
 
 
 def confirm_password_reset(db: Session, token: str, new_password: str) -> User:
-    token_hash = _hash_token(token)
+    token_hash = hash_token(token)
     reset_token = db.scalar(select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash))
     if reset_token is None:
         raise AppError(404, "PASSWORD_RESET_TOKEN_INVALID", "유효하지 않은 재설정 링크입니다.")

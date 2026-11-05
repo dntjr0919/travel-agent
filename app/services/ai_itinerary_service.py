@@ -5,7 +5,6 @@ import logging
 import math
 from datetime import date, timedelta
 
-from app.core.config import DEFAULT_RESERVATION_ANALYSIS_MODEL, RESERVATION_ANALYSIS_MODEL_NAMES
 from app.core.errors import AppError
 from app.schemas.ai_itinerary import (
     AiItineraryCourseResponse,
@@ -14,7 +13,11 @@ from app.schemas.ai_itinerary import (
     AiItineraryDraftOut,
     AiItinerarySearchPlanResponse,
 )
-from app.services.llm.gemini_provider import get_gemini_text_json
+from app.services.llm.gemini_provider import (
+    get_gemini_text_json,
+    resolve_gemini_analysis_model,
+    strip_markdown_code_fence,
+)
 from app.services.map_providers.base import PlaceSearchResult
 from app.services.place_search_service import search_places
 
@@ -25,24 +28,11 @@ ALLOWED_INTERESTS = {"culture", "cafe", "nature", "shopping", "food", "night_vie
 ALLOWED_PACES = {"relaxed", "balanced", "packed"}
 AI_ITINERARY_LOCATION_BIAS_RADIUS_METERS = 30000.0
 
-
-def _strip_markdown_code_fence(text: str) -> str:
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        lines = cleaned.splitlines()
-        if len(lines) >= 2 and lines[-1].strip() == "```":
-            cleaned = "\n".join(lines[1:-1]).strip()
-        elif len(lines) >= 1:
-            cleaned = "\n".join(lines[1:]).strip()
-    return cleaned
+_strip_markdown_code_fence = strip_markdown_code_fence
 
 
 def resolve_ai_itinerary_model(model: str | None) -> str:
-    model_key = (model or "").strip() or DEFAULT_RESERVATION_ANALYSIS_MODEL
-    model_name = RESERVATION_ANALYSIS_MODEL_NAMES.get(model_key)
-    if not model_name:
-        raise AppError(422, "AI_ITINERARY_INVALID_MODEL", "지원하지 않는 분석 모델입니다.")
-    return model_name
+    return resolve_gemini_analysis_model(model, invalid_code="AI_ITINERARY_INVALID_MODEL")
 
 
 def _validate_style(style: str) -> str:

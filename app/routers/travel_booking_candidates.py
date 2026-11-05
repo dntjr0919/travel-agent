@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.presence import presence_manager
 from app.models.user import User
 from app.schemas.travel_booking_candidate import (
     TravelBookingCandidateCreate,
@@ -38,20 +39,44 @@ def get_travel_booking_candidates(
 def post_travel_booking_candidate(
     trip_id: int,
     data: TravelBookingCandidateCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    return create_travel_booking_candidate(db, trip_id, current_user, data)
+    created = create_travel_booking_candidate(db, trip_id, current_user, data)
+    background_tasks.add_task(
+        presence_manager.broadcast_trip_activity,
+        trip_id,
+        actor_id=current_user.id,
+        actor_name=current_user.display_name,
+        entity_type="booking_candidate",
+        action="created",
+        entity_id=created["id"],
+        title=created["title"],
+    )
+    return created
 
 
 @router.patch("/booking-candidates/{candidate_id}", response_model=TravelBookingCandidateOut)
 def patch_travel_booking_candidate(
     candidate_id: int,
     data: TravelBookingCandidateUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    return update_travel_booking_candidate(db, candidate_id, current_user, data)
+    updated = update_travel_booking_candidate(db, candidate_id, current_user, data)
+    background_tasks.add_task(
+        presence_manager.broadcast_trip_activity,
+        updated["trip_id"],
+        actor_id=current_user.id,
+        actor_name=current_user.display_name,
+        entity_type="booking_candidate",
+        action="updated",
+        entity_id=updated["id"],
+        title=updated["title"],
+    )
+    return updated
 
 
 @router.delete("/booking-candidates/{candidate_id}", status_code=204, response_model=None)

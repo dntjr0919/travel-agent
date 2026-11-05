@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import subprocess
@@ -8,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from app.core.config import get_settings
+from app.core.presence import TripPresenceManager, presence_manager
 from tests.conftest import register_and_login
 from tests.test_trips import create_trip
 
@@ -59,6 +61,150 @@ process.stdout.write(JSON.stringify(pages));
             "range": "11–12 / 총 12개",
             "names": [f"place-{index}" for index in range(11, 13)],
         },
+    ]
+
+
+def test_frontend_extract_json_object_helper_handles_prose_and_code_fences():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the inline JSON extractor helper")
+
+    template_path = Path(__file__).parents[1] / "app" / "templates" / "trip_detail.html"
+    template = template_path.read_text(encoding="utf-8")
+    helper_start = template.index("function extractJsonObjectFromLlmText(")
+    helper_end = template.index("\nfunction setExternalLlmFeedback(", helper_start)
+    helper_source = template[helper_start:helper_end]
+    samples = [
+        '아래는 생성된 일정입니다.\n```json\n{"version":1,"items":[{"title":"테스트"}]}\n```\n즐거운 여행 되세요!',
+        '설명 텍스트 {"kind":"flight","title":"KE703"} 꼬리말',
+    ]
+    script = f"""
+{helper_source}
+const samples = {json.dumps(samples, ensure_ascii=False)};
+const parsed = samples.map((raw) => extractJsonObjectFromLlmText(raw));
+process.stdout.write(JSON.stringify(parsed));
+"""
+    result = subprocess.run(
+        [node, "--input-type=commonjs", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert json.loads(result.stdout) == [
+        {"version": 1, "items": [{"title": "테스트"}]},
+        {"kind": "flight", "title": "KE703"},
+    ]
+
+
+def test_presence_manager_broadcast_trip_activity():
+    class DummyWebSocket:
+        def __init__(self, should_fail: bool = False):
+            self.should_fail = should_fail
+            self.messages: list[dict] = []
+
+        async def send_json(self, message: dict) -> None:
+            if self.should_fail:
+                raise RuntimeError("socket closed")
+            self.messages.append(message)
+
+    manager = TripPresenceManager()
+    healthy_ws = DummyWebSocket()
+    dead_ws = DummyWebSocket(should_fail=True)
+    manager._connections[77][1].add(healthy_ws)
+    manager._connections[77][2].add(dead_ws)
+    manager._users[77][1] = {"id": 1, "display_name": "Alice"}
+    manager._users[77][2] = {"id": 2, "display_name": "Bob"}
+
+    coro = manager.broadcast_trip_activity(
+        77,
+        actor_id=2,
+        actor_name="Bob",
+        entity_type="itinerary",
+        action="created",
+        entity_id=101,
+        title="우에노 공원 산책",
+    )
+    try:
+        coro.send(None)
+    except StopIteration:
+        pass
+
+    assert len(healthy_ws.messages) == 1
+    payload = healthy_ws.messages[0]
+    assert payload["type"] == "trip_activity"
+    assert payload["trip_id"] == 77
+    assert payload["actor_id"] == 2
+    assert payload["actor_name"] == "Bob"
+    assert payload["entity_type"] == "itinerary"
+    assert payload["action"] == "created"
+    assert payload["entity_id"] == 101
+    assert payload["title"] == "우에노 공원 산책"
+    assert payload["timestamp"]
+    assert 2 not in manager._connections[77]
+
+
+def test_collaborator_entity_mutations_broadcast_trip_activity(client, monkeypatch):
+    events: list[dict] = []
+
+    async def record_activity(trip_id: int, **kwargs) -> None:
+        events.append({"trip_id": trip_id, **kwargs})
+
+    monkeypatch.setattr(presence_manager, "broadcast_trip_activity", record_activity)
+
+    register_and_login(client, "activity-broadcast@example.com")
+    trip = create_trip(client)
+    trip_id = trip["id"]
+
+    itinerary_res = client.post(
+        f"/api/trips/{trip_id}/itineraries",
+        json={"title": "첫 일정"},
+    )
+    assert itinerary_res.status_code == 201
+    itinerary_data = itinerary_res.json()
+    itinerary_id = itinerary_data["id"]
+
+    patch_itinerary_res = client.patch(
+        f"/api/itineraries/{itinerary_id}",
+        json={"title": "수정된 일정", "version": itinerary_data["version"]},
+    )
+    assert patch_itinerary_res.status_code == 200
+
+    place_res = client.post(
+        f"/api/trips/{trip_id}/place-candidates",
+        json={"provider": "google", "external_place_id": "place-sensoji-1", "name": "센소지"},
+    )
+    assert place_res.status_code == 201
+    place_id = place_res.json()["id"]
+
+    patch_place_res = client.patch(
+        f"/api/place-candidates/{place_id}",
+        json={"memo": "오전 방문"},
+    )
+    assert patch_place_res.status_code == 200
+
+    booking_res = client.post(
+        f"/api/trips/{trip_id}/booking-candidates",
+        json={"kind": "accommodation", "title": "도쿄 호텔", "accommodation_name": "도쿄 호텔"},
+    )
+    assert booking_res.status_code == 201
+    booking_id = booking_res.json()["id"]
+
+    patch_booking_res = client.patch(
+        f"/api/booking-candidates/{booking_id}",
+        json={"title": "도쿄 시티 호텔"},
+    )
+    assert patch_booking_res.status_code == 200
+
+    summary = [(e["entity_type"], e["action"], e["entity_id"], e["title"]) for e in events]
+    assert summary == [
+        ("itinerary", "created", itinerary_id, "첫 일정"),
+        ("itinerary", "updated", itinerary_id, "수정된 일정"),
+        ("place_candidate", "created", place_id, "센소지"),
+        ("place_candidate", "updated", place_id, "센소지"),
+        ("booking_candidate", "created", booking_id, "도쿄 호텔"),
+        ("booking_candidate", "updated", booking_id, "도쿄 시티 호텔"),
     ]
 
 
@@ -303,6 +449,37 @@ def test_trip_detail_contains_unified_map_and_layout_markup(client):
     assert 'id="saved-candidates-map"' not in text
 
 
+def test_trip_detail_contains_collab_and_external_llm_feature_markup(client):
+    register_and_login(client, "pages-collab-external-llm@example.com")
+    trip = create_trip(client)
+
+    res = client.get(f"/trips/{trip['id']}")
+
+    assert res.status_code == 200
+    text = res.text
+    assert 'id="enable-push-notifications-btn"' in text
+    assert 'id="trip-activity-toast"' in text
+    assert 'id="open-tools-unread-dot"' in text
+    assert 'id="open-tools-floating-unread-dot"' in text
+    assert 'id="trip-tools-tab-places-unread-dot"' in text
+    assert 'id="trip-tools-tab-reservations-unread-dot"' in text
+    assert 'id="reservation-transport-unread-dot"' in text
+    assert 'id="reservation-accommodation-unread-dot"' in text
+    assert 'id="external-llm-custom-request"' in text
+    assert 'id="external-llm-share-prompt-btn"' in text
+    assert 'id="reservation-external-llm-custom-request"' in text
+    assert 'id="reservation-external-llm-copy-btn"' in text
+    assert 'id="reservation-external-llm-share-btn"' in text
+    assert 'id="reservation-external-llm-json"' in text
+    assert 'id="reservation-external-llm-apply-btn"' in text
+    assert 'id="reservation-external-llm-feedback"' in text
+    assert "const PUSH_NOTIFICATION_COOLDOWN_MS = 3600 * 1000;" in text
+    assert "function extractJsonObjectFromLlmText(" in text
+    assert "function buildReservationExternalLlmPrompt(" in text
+    assert "async function handleTripActivityEvent(" in text
+    assert "function updateUnreadIndicators(" in text
+
+
 def test_trip_detail_renders_google_maps_script_when_browser_key_is_set(client):
     settings = get_settings()
     original_browser_key = settings.google_maps_browser_api_key
@@ -327,7 +504,6 @@ def test_trip_detail_renders_google_maps_script_when_browser_key_is_set(client):
     assert text.count("https://maps.googleapis.com/maps/api/js?key=") == 1
 
 
-
 def test_trip_detail_does_not_render_google_maps_script_when_browser_key_is_empty(client):
     settings = get_settings()
     original_browser_key = settings.google_maps_browser_api_key
@@ -347,7 +523,6 @@ def test_trip_detail_does_not_render_google_maps_script_when_browser_key_is_empt
 
     assert res.status_code == 200
     assert "maps.googleapis.com/maps/api/js?key=" not in res.text
-
 
 
 def test_trip_detail_never_exposes_server_google_maps_api_key(client):

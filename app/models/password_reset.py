@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base, TZDateTime
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+from app.core.database import Base, TZDateTime, utcnow
 
 
 class PasswordResetToken(Base):
@@ -20,6 +16,6 @@ class PasswordResetToken(Base):
     token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(TZDateTime, nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(TZDateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, nullable=False)
 
     user = relationship("User", foreign_keys=[user_id])

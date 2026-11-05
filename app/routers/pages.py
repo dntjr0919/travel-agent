@@ -1,28 +1,19 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import get_settings
 from app.core.dependencies import get_current_user_optional
-from app.core.database import SessionLocal
+from app.models.user import User
 
 router = APIRouter(tags=["pages"])
 templates = Jinja2Templates(directory="app/templates")
 
 
-def _current_user_for_page(request: Request):
-    db = SessionLocal()
-    try:
-        return get_current_user_optional(request, db)
-    finally:
-        db.close()
-
-
 @router.get("/")
-def index(request: Request):
-    user = _current_user_for_page(request)
+def index(request: Request, user: User | None = Depends(get_current_user_optional)):
     return RedirectResponse(url="/trips" if user else "/login")
 
 
@@ -47,22 +38,26 @@ def reset_password_page(request: Request, token: str):
 
 
 @router.get("/trips")
-def trips_page(request: Request):
-    if _current_user_for_page(request) is None:
+def trips_page(request: Request, user: User | None = Depends(get_current_user_optional)):
+    if user is None:
         return RedirectResponse(url="/login")
     return templates.TemplateResponse(request, "trips.html", {})
 
 
 @router.get("/trips/new")
-def trip_new_page(request: Request):
-    if _current_user_for_page(request) is None:
+def trip_new_page(request: Request, user: User | None = Depends(get_current_user_optional)):
+    if user is None:
         return RedirectResponse(url="/login")
     return templates.TemplateResponse(request, "trip_form.html", {})
 
 
 @router.get("/trips/{trip_id}")
-def trip_detail_page(request: Request, trip_id: int):
-    if _current_user_for_page(request) is None:
+def trip_detail_page(
+    request: Request,
+    trip_id: int,
+    user: User | None = Depends(get_current_user_optional),
+):
+    if user is None:
         return RedirectResponse(url="/login")
 
     settings = get_settings()
@@ -78,14 +73,22 @@ def trip_detail_page(request: Request, trip_id: int):
 
 
 @router.get("/trips/{trip_id}/members")
-def trip_members_page(request: Request, trip_id: int):
-    if _current_user_for_page(request) is None:
+def trip_members_page(
+    request: Request,
+    trip_id: int,
+    user: User | None = Depends(get_current_user_optional),
+):
+    if user is None:
         return RedirectResponse(url="/login")
     return templates.TemplateResponse(request, "members.html", {"trip_id": trip_id})
 
 
 @router.get("/invitations/{token}")
-def invitation_accept_page(request: Request, token: str):
-    if _current_user_for_page(request) is None:
+def invitation_accept_page(
+    request: Request,
+    token: str,
+    user: User | None = Depends(get_current_user_optional),
+):
+    if user is None:
         return RedirectResponse(url=f"/login?next=/invitations/{token}")
     return templates.TemplateResponse(request, "invitation_accept.html", {"token": token})

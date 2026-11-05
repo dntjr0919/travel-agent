@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base, TZDateTime
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+from app.core.database import Base, TZDateTime, utcnow
 
 
 class ItineraryCategory(str, enum.Enum):
@@ -46,8 +42,8 @@ class ItineraryItem(Base):
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
     trip = relationship("Trip", back_populates="itinerary_items")
     creator = relationship("User", foreign_keys=[created_by])

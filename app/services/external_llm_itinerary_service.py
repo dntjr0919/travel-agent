@@ -35,6 +35,7 @@ MAP_URL_ALLOWED_HOSTS = {
 _DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 _CODE_FENCE_PATTERN = re.compile(r"\A\s*```(?:json)?\s*(.*?)\s*```\s*\Z", re.IGNORECASE | re.DOTALL)
+_CODE_FENCE_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.IGNORECASE | re.DOTALL)
 
 
 class ExternalLlmDraftItem(BaseModel):
@@ -133,6 +134,70 @@ def _reject_json_constant(value: str) -> None:
     raise ValueError(f"Invalid JSON constant: {value}")
 
 
+def extract_json_object_text(raw_text: str) -> str:
+    """외부 LLM 출력 문자열에서 JSON 객체({...}) 부분만 추출한다."""
+    content = raw_text.strip()
+    if not content:
+        return content
+
+    # 1. 전체 문자열이 유효한 JSON 객체({...})인지 확인
+    if content.startswith("{") and content.endswith("}"):
+        try:
+            parsed = json.loads(content, parse_constant=_reject_json_constant)
+            if isinstance(parsed, dict):
+                return content
+        except (json.JSONDecodeError, ValueError, RecursionError):
+            pass
+
+    # 2. 마크다운 코드 블록(```json ... ``` 또는 ``` ... ```) 내부 탐색
+    fallback_dict_text: str | None = None
+    for match in _CODE_FENCE_BLOCK_PATTERN.finditer(content):
+        block = match.group(1).strip()
+        if not block:
+            continue
+        try:
+            parsed = json.loads(block, parse_constant=_reject_json_constant)
+            if isinstance(parsed, dict):
+                if "items" in parsed:
+                    return block
+                if fallback_dict_text is None:
+                    fallback_dict_text = block
+        except (json.JSONDecodeError, ValueError, RecursionError):
+            pass
+
+    if fallback_dict_text is not None:
+        return fallback_dict_text
+
+    # 3. 일반 텍스트 중간에 삽입된 balanced JSON 객체({...}) 스캔
+    decoder = json.JSONDecoder(parse_constant=_reject_json_constant)
+    search_pos = 0
+    while True:
+        brace_idx = content.find("{", search_pos)
+        if brace_idx == -1:
+            break
+        try:
+            parsed, end_idx = decoder.raw_decode(content, brace_idx)
+            if isinstance(parsed, dict):
+                candidate_text = content[brace_idx:end_idx]
+                if "items" in parsed:
+                    return candidate_text
+                if fallback_dict_text is None:
+                    fallback_dict_text = candidate_text
+                search_pos = end_idx
+                continue
+        except (json.JSONDecodeError, ValueError, RecursionError):
+            pass
+        search_pos = brace_idx + 1
+
+    if fallback_dict_text is not None:
+        return fallback_dict_text
+
+    fenced = _CODE_FENCE_PATTERN.fullmatch(content)
+    if fenced:
+        return fenced.group(1).strip()
+    return content
+
+
 def _validation_message(error: ValidationError) -> str:
     errors = error.errors(include_url=False)
     if any(item["type"] == "extra_forbidden" for item in errors):
@@ -177,10 +242,7 @@ def parse_external_llm_draft(raw_json: str, trip: Trip) -> list[ExternalLlmDraft
     if not raw_json.strip():
         _raise_invalid_json("JSON을 붙여넣으세요.")
 
-    content = raw_json.strip()
-    fenced = _CODE_FENCE_PATTERN.fullmatch(content)
-    if fenced:
-        content = fenced.group(1).strip()
+    content = extract_json_object_text(raw_json)
     try:
         document = json.loads(content, parse_constant=_reject_json_constant)
     except (json.JSONDecodeError, ValueError, RecursionError):

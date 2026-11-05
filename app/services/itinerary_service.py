@@ -4,7 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.errors import AppError
 from app.models.itinerary import ItineraryItem, ItineraryStatus
@@ -25,8 +25,8 @@ def _check_within_trip_range(trip: Trip, moment: datetime) -> None:
 
 
 def _serialize(db: Session, item: ItineraryItem) -> dict:
-    creator = db.get(User, item.created_by)
-    updater = db.get(User, item.updated_by)
+    creator = item.creator if "creator" in item.__dict__ else db.get(User, item.created_by)
+    updater = item.updater if "updater" in item.__dict__ else db.get(User, item.updated_by)
     return {
         "id": item.id,
         "trip_id": item.trip_id,
@@ -56,6 +56,10 @@ def list_itineraries(db: Session, trip_id: int, user_id: int) -> list[dict]:
     require_member(db, trip_id, user_id)
     stmt = (
         select(ItineraryItem)
+        .options(
+            joinedload(ItineraryItem.creator),
+            joinedload(ItineraryItem.updater),
+        )
         .where(ItineraryItem.trip_id == trip_id)
         .order_by(ItineraryItem.start_at.asc().nulls_last(), ItineraryItem.id.asc())
     )

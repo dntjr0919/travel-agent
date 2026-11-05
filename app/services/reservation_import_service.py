@@ -5,15 +5,20 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
-from app.core.config import DEFAULT_RESERVATION_ANALYSIS_MODEL, RESERVATION_ANALYSIS_MODEL_NAMES
 from app.core.errors import AppError
 from app.schemas.reservation_import import DEFAULT_WARNING, TIMEZONE_FALLBACK_WARNING, ReservationImportAnalyzeOut
-from app.services.llm import get_gemini_reservation_json
+from app.services.llm import (
+    get_gemini_reservation_json,
+    resolve_gemini_analysis_model,
+    strip_markdown_code_fence,
+)
 
 logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+_strip_markdown_code_fence = strip_markdown_code_fence
 
 
 def is_safe_booking_url(value: str | None) -> bool:
@@ -41,15 +46,7 @@ def validate_image_upload(content_type: str | None, file_size: int) -> None:
 
 
 def resolve_reservation_analysis_model(model: str | None) -> str:
-    model_key = (model or "").strip() or DEFAULT_RESERVATION_ANALYSIS_MODEL
-    model_name = RESERVATION_ANALYSIS_MODEL_NAMES.get(model_key)
-    if not model_name:
-        raise AppError(
-            422,
-            "RESERVATION_IMPORT_INVALID_MODEL",
-            "지원하지 않는 분석 모델입니다.",
-        )
-    return model_name
+    return resolve_gemini_analysis_model(model, invalid_code="RESERVATION_IMPORT_INVALID_MODEL")
 
 
 def _get_reservation_json_text(*, image_bytes: bytes, content_type: str, model_name: str) -> str:
@@ -58,17 +55,6 @@ def _get_reservation_json_text(*, image_bytes: bytes, content_type: str, model_n
         content_type=content_type,
         model_name=model_name,
     )
-
-
-def _strip_markdown_code_fence(text: str) -> str:
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        lines = cleaned.splitlines()
-        if len(lines) >= 2 and lines[-1].strip() == "```":
-            cleaned = "\n".join(lines[1:-1]).strip()
-        elif len(lines) >= 1:
-            cleaned = "\n".join(lines[1:]).strip()
-    return cleaned
 
 
 def analyze_reservation_image_draft(

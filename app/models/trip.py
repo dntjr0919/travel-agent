@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import enum
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from sqlalchemy import CheckConstraint, Date, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base, TZDateTime
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+from app.core.database import Base, TZDateTime, utcnow
 
 
 class TripRole(str, enum.Enum):
@@ -34,8 +30,8 @@ class Trip(Base):
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="Asia/Seoul")
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
     owner = relationship("User", back_populates="owned_trips", foreign_keys=[owner_id])
     members = relationship("TripMember", back_populates="trip", cascade="all, delete-orphan")
@@ -54,9 +50,9 @@ class TripMember(Base):
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default=TripMemberStatus.ACTIVE.value)
     invited_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    joined_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
+    joined_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(TZDateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
     trip = relationship("Trip", back_populates="members")
     user = relationship("User", foreign_keys=[user_id])

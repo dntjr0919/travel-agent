@@ -1,0 +1,18 @@
+{% if include_timezone_placeholder %}
+<option value="" disabled>시간대를 선택하세요</option>
+{% endif %}
+<option value="Asia/Seoul"{% if default_timezone == "Asia/Seoul" %} selected{% endif %}>한국 (서울)</option>
+<option value="Asia/Tokyo">일본 (도쿄)</option>
+<option value="Asia/Shanghai">중국 (상하이)</option>
+<option value="Asia/Taipei">대만 (타이베이)</option>
+<option value="Asia/Hong_Kong">홍콩</option>
+<option value="Asia/Bangkok">태국 (방콕)</option>
+<option value="Asia/Ho_Chi_Minh">베트남 (호찌민)</option>
+<option value="Asia/Singapore">싱가포르</option>
+<option value="Pacific/Guam">괌</option>
+<option value="Australia/Sydney">호주 동부 (시드니)</option>
+<option value="America/Los_Angeles">미국 서부 (로스앤젤레스)</option>
+<option value="America/New_York">미국 동부 (뉴욕)</option>
+<option value="Europe/London">영국 (런던)</option>
+<option value="Europe/Paris">프랑스·중부유럽 (파리)</option>
+<option value="UTC">UTC</option>

@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base, TZDateTime
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+from app.core.database import Base, TZDateTime, utcnow
 
 
 class PlaceCandidate(Base):
@@ -90,14 +86,14 @@ class PlaceCandidate(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         TZDateTime,
-        default=_utcnow,
+        default=utcnow,
         nullable=False,
     )
 
     updated_at: Mapped[datetime] = mapped_column(
         TZDateTime,
-        default=_utcnow,
-        onupdate=_utcnow,
+        default=utcnow,
+        onupdate=utcnow,
         nullable=False,
     )
 

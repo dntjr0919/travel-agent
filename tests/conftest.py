@@ -41,14 +41,7 @@ def db_session():
 
 
 @pytest.fixture()
-def client(db_session, monkeypatch):
-    page_session_local = sessionmaker(
-        autocommit=False,
-        autoflush=False,
-        bind=db_session.get_bind(),
-    )
-    monkeypatch.setattr("app.routers.pages.SessionLocal", page_session_local)
-
+def client(db_session):
     def override_get_db():
         try:
             yield db_session
