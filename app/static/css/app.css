@@ -3420,12 +3420,6 @@ body:not(:has(.auth-card)) .nav-guest-links {
   line-height: 1;
 }
 
-@media (min-width: 761px) {
-  #open-tools-floating-btn {
-    display: none;
-  }
-}
-
 @media (max-width: 760px) {
   #open-tools-btn {
     display: none;
@@ -3652,11 +3646,37 @@ body:not(:has(.auth-card)) .nav-guest-links {
   font-size: 0.8rem;
 }
 
+#open-tools-btn,
+.trip-tools-toggle {
+  display: none !important;
+}
+
+#open-tools-floating-btn {
+  display: inline-flex !important;
+}
+
 .presence-notification-btn {
-  min-height: 28px;
-  padding: 0.2rem 0.55rem;
-  font-size: 0.75rem;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
   margin-left: auto;
+  background: var(--ui-surface, #ffffff);
+  color: var(--ui-text-muted, #6b7476);
+  border: 1px solid var(--ui-border-strong, #bdc9c2);
+}
+
+.presence-notification-btn.is-active {
+  background: var(--ui-primary-soft, #dff0ec);
+  color: var(--ui-primary-strong, #176b66);
+  border-color: var(--ui-primary, #25857f);
 }
 
 /* Feature 4: 예약 스크린샷 외부 LLM 연동 영역 */

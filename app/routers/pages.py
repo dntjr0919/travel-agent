@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -10,6 +12,30 @@ from app.models.user import User
 
 router = APIRouter(tags=["pages"])
 templates = Jinja2Templates(directory="app/templates")
+
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+def get_static_version(path: str) -> str:
+    """정적 파일의 실제 파일 수정 시간(mtime)을 버전 문자열로 반환한다."""
+    normalized = path.lstrip("/")
+    if normalized.startswith("app/static/"):
+        rel_path = normalized[len("app/static/"):]
+    elif normalized.startswith("static/"):
+        rel_path = normalized[len("static/"):]
+    else:
+        rel_path = normalized
+
+    file_path = _STATIC_DIR / rel_path
+    try:
+        if file_path.is_file():
+            return str(int(file_path.stat().st_mtime))
+    except (OSError, ValueError):
+        pass
+    return "1"
+
+
+templates.env.globals["static_v"] = get_static_version
+templates.env.globals["get_static_version"] = get_static_version
 
 
 @router.get("/")

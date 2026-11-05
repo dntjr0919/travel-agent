@@ -474,10 +474,83 @@ def test_trip_detail_contains_collab_and_external_llm_feature_markup(client):
     assert 'id="reservation-external-llm-apply-btn"' in text
     assert 'id="reservation-external-llm-feedback"' in text
     assert "const PUSH_NOTIFICATION_COOLDOWN_MS = 3600 * 1000;" in text
+    assert 'const PUSH_NOTIFICATION_ENABLED_STORAGE_KEY = "travel_planner_push_enabled";' in text
+    assert 'aria-pressed="false"' in text
+    assert "function isPushNotificationEnabled(" in text
+    assert "function setPushNotificationEnabled(" in text
     assert "function extractJsonObjectFromLlmText(" in text
+    assert "function normalizeExternalLlmJsonForRequest(" in text
     assert "function buildReservationExternalLlmPrompt(" in text
     assert "async function handleTripActivityEvent(" in text
     assert "function updateUnreadIndicators(" in text
+
+    css_path = Path(__file__).parents[1] / "app" / "static" / "css" / "app.css"
+    css_text = css_path.read_text(encoding="utf-8")
+    assert "@media (min-width: 761px)" not in css_text
+
+
+def test_frontend_normalize_external_llm_json_preserves_valid_place_url_and_clears_invalid_urls(client):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the inline JSON normalizer helper")
+
+    template_path = Path(__file__).parents[1] / "app" / "templates" / "trip_detail.html"
+    template = template_path.read_text(encoding="utf-8")
+    helper_start = template.index("function extractJsonObjectFromLlmText(")
+    helper_end = template.index("\nfunction setExternalLlmFeedback(", helper_start)
+    helper_source = template[helper_start:helper_end]
+
+    raw_input = (
+        '{"version":1,"items":['
+        '{"date":"2026-11-02","start_time":"9:00","end_time":"10:30","title":"간사이 공항 도착[1]",'
+        '"memo":"입국 심사[2]","place_name":"간사이 국제공항[1]",'
+        '"place_url":"https://www.google.com/maps/search/?api=1&query=Kansai+International+Airport","extra_field":"ignored"},'
+        '{"date":"2026-11-02","start_time":"12:00","title":"깨진 링크 일정",'
+        '"place_name":"도톤보리","place_url":"not-a-url"},'
+        '{"date":"2026-11-02","start_time":"15:00","title":"비허용 도메인 일정",'
+        '"place_name":"오사카 성","place_url":"http://unsafe.example.com/map"}'
+        ']}[1]\n\nCitations:\n[1] https://example.com'
+    )
+    script = f"""
+{helper_source}
+const raw = {json.dumps(raw_input, ensure_ascii=False)};
+process.stdout.write(normalizeExternalLlmJsonForRequest(raw));
+"""
+    result = subprocess.run(
+        [node, "--input-type=commonjs", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    normalized_str = result.stdout
+    normalized_doc = json.loads(normalized_str)
+    assert normalized_doc["items"][0]["start_time"] == "09:00"
+    assert normalized_doc["items"][0]["title"] == "간사이 공항 도착"
+    assert normalized_doc["items"][0]["place_name"] == "간사이 국제공항"
+    assert (
+        normalized_doc["items"][0]["place_url"]
+        == "https://www.google.com/maps/search/?api=1&query=Kansai+International+Airport"
+    )
+    assert "extra_field" not in normalized_doc["items"][0]
+    assert normalized_doc["items"][1]["place_url"] == ""
+    assert normalized_doc["items"][2]["place_url"] == ""
+
+    register_and_login(client, "pages-normalized-import@example.com")
+    trip = create_trip(client)
+    import_res = client.post(
+        f"/api/trips/{trip['id']}/external-llm-itinerary/import",
+        json={"raw_json": normalized_str, "selected_indices": [0, 1, 2]},
+    )
+    assert import_res.status_code == 200
+    assert import_res.json()["created_count"] == 3
+    candidates = client.get(f"/api/trips/{trip['id']}/place-candidates").json()
+    assert len(candidates) == 3
+    by_name = {c["name"]: c for c in candidates}
+    assert (
+        by_name["간사이 국제공항"]["map_url"]
+        == "https://www.google.com/maps/search/?api=1&query=Kansai+International+Airport"
+    )
 
 
 def test_trip_detail_renders_google_maps_script_when_browser_key_is_set(client):
@@ -623,3 +696,16 @@ def test_trip_detail_places_maps_script_after_inline_script(client):
 
     between = text[inline_script_end:maps_script_tag_open_index]
     assert "const reservationImageFileInput" not in between
+
+
+def test_base_template_dynamic_cache_busting_versions(client):
+    res = client.get("/login")
+    assert res.status_code == 200
+    import re
+    css_match = re.search(r'href="/static/css/app\.css\?v=(\d+)"', res.text)
+    js_match = re.search(r'src="/static/js/app\.js\?v=(\d+)"', res.text)
+    assert css_match is not None, "app.css does not have dynamic cache busting timestamp"
+    assert js_match is not None, "app.js does not have dynamic cache busting timestamp"
+    from app.routers.pages import get_static_version
+    assert css_match.group(1) == get_static_version("static/css/app.css")
+    assert js_match.group(1) == get_static_version("static/js/app.js")

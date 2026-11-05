@@ -45,9 +45,14 @@
 <div id="presence-bar" class="presence-bar" style="display:none">
   <span class="presence-label">현재 보고 있는 사람</span>
   <div id="presence-users" class="presence-users"></div>
-  <button id="enable-push-notifications-btn" type="button" class="secondary presence-notification-btn" style="display:none">
-    🔔 알림 켜기
-  </button>
+  <button
+    id="enable-push-notifications-btn"
+    type="button"
+    class="secondary presence-notification-btn"
+    aria-pressed="false"
+    aria-label="실시간 알림 켜기"
+    title="실시간 알림 꺼짐 (클릭하여 켜기)"
+  >🔕</button>
 </div>
 <div id="trip-activity-toast" class="trip-activity-toast" role="status" aria-live="polite" hidden>
   <span id="trip-activity-toast-text"></span>
@@ -1409,14 +1414,38 @@ function updateUnreadIndicators() {
   }
 }
 
+const PUSH_NOTIFICATION_ENABLED_STORAGE_KEY = "travel_planner_push_enabled";
+
+function isPushNotificationEnabled() {
+  try {
+    return localStorage.getItem(PUSH_NOTIFICATION_ENABLED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function setPushNotificationEnabled(enabled) {
+  try {
+    localStorage.setItem(PUSH_NOTIFICATION_ENABLED_STORAGE_KEY, enabled ? "true" : "false");
+  } catch {
+    // ignore storage errors
+  }
+  updatePushNotificationToggleUI();
+}
+
 function updatePushNotificationToggleUI() {
   const btn = document.getElementById("enable-push-notifications-btn");
   if (!btn) return;
-  if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-    btn.style.display = "inline-flex";
-  } else {
-    btn.style.display = "none";
-  }
+  const enabled = isPushNotificationEnabled();
+  btn.style.display = "inline-flex";
+  btn.classList.toggle("is-active", enabled);
+  btn.setAttribute("aria-pressed", enabled ? "true" : "false");
+  btn.setAttribute(
+    "title",
+    enabled ? "실시간 알림 켜짐 (클릭하여 끄기)" : "실시간 알림 꺼짐 (클릭하여 켜기)",
+  );
+  btn.setAttribute("aria-label", enabled ? "실시간 알림 끄기" : "실시간 알림 켜기");
+  btn.textContent = enabled ? "🔔" : "🔕";
 }
 
 function showActivityToast(message) {
@@ -1449,6 +1478,10 @@ function formatActivityNotificationMessage(data) {
 }
 
 function maybeSendCooldownNotification(data) {
+  if (!isPushNotificationEnabled()) {
+    return false;
+  }
+
   const now = Date.now();
   const storageKey = getLastPushNotifiedStorageKey();
   let lastNotifiedAt = 0;
@@ -1632,6 +1665,8 @@ function renderHeader() {
         id="open-tools-btn"
         type="button"
         class="trip-tools-toggle"
+        hidden
+        style="display:none"
         aria-label="여행 도구 열기"
         aria-controls="trip-tools-drawer"
         aria-expanded="${isToolsDrawerOpen ? "true" : "false"}"
@@ -1658,10 +1693,10 @@ if (canEdit) {
   document.getElementById("add-item-btn").addEventListener("click", () => openItemForm(null));
 }
 
-  document.getElementById("open-tools-btn")?.addEventListener("click", openToolsDrawer);
   setToolsDrawerPermissions(canEdit);
   setAiItineraryPanelVisibility(canEdit);
   updateUnreadIndicators();
+  updatePushNotificationToggleUI();
 }
 
 function openTripEditForm() {
@@ -5894,7 +5929,17 @@ let externalLlmAnalysisItems = [];
 let externalLlmAnalyzedRawJson = "";
 
 function extractJsonObjectFromLlmText(rawText) {
-  const content = String(rawText || "").trim();
+  const cleanSource = (input) =>
+    String(input || "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .trim()
+      .replace(/\n\s*(?:Citations|출처|References)\s*:\s*[\s\S]*$/i, "")
+      .trim()
+      .replace(/([\}\]])\s*(?:\[\d+\])+/g, "$1")
+      .replace(/"\s*(?:\[\d+\])+\s*(?=[,\}\]:])/g, '"')
+      .replace(/(?:\[\d+\])+\s*([,\}\]])/g, "$1");
+
+  const content = cleanSource(rawText);
   if (!content) {
     throw new Error("EMPTY_INPUT");
   }
@@ -5918,7 +5963,7 @@ function extractJsonObjectFromLlmText(rawText) {
   const fenceRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
   let match;
   while ((match = fenceRegex.exec(content)) !== null) {
-    const block = (match[1] || "").trim();
+    const block = cleanSource(match[1] || "");
     if (!block) continue;
     try {
       const parsed = JSON.parse(block);
@@ -5976,7 +6021,7 @@ function extractJsonObjectFromLlmText(rawText) {
     }
 
     if (matchedEnd !== -1) {
-      const candidateStr = content.slice(startIdx, matchedEnd);
+      const candidateStr = cleanSource(content.slice(startIdx, matchedEnd));
       try {
         const parsed = JSON.parse(candidateStr);
         if (isPlainObject(parsed)) {
@@ -6002,6 +6047,93 @@ function extractJsonObjectFromLlmText(rawText) {
   }
 
   throw new Error("INVALID_JSON_OBJECT");
+}
+
+function isAllowedGoogleMapsUrl(value) {
+  if (typeof value !== "string" || !value || value !== value.trim()) {
+    return false;
+  }
+  const allowedHosts = new Set([
+    "google.com",
+    "www.google.com",
+    "maps.google.com",
+    "goo.gl",
+    "maps.app.goo.gl",
+  ]);
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:") return false;
+    if (parsed.username || parsed.password) return false;
+    if (parsed.port && parsed.port !== "443") return false;
+    return allowedHosts.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+function normalizeExternalLlmJsonForRequest(rawText) {
+  const stripText = (val) =>
+    String(val ?? "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/(?:\s*\[\d+\])+/g, "")
+      .trim();
+
+  const normalizeTime = (val) => {
+    const cleaned = stripText(val);
+    if (!cleaned) return "";
+    const singleHourMatch = /^(\d):([0-5]\d)$/.exec(cleaned);
+    if (singleHourMatch) {
+      return `0${singleHourMatch[1]}:${singleHourMatch[2]}`;
+    }
+    return cleaned;
+  };
+
+  let extracted;
+  try {
+    extracted = extractJsonObjectFromLlmText(rawText);
+  } catch {
+    return String(rawText || "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+  }
+
+  if (!extracted || typeof extracted !== "object" || !Array.isArray(extracted.items)) {
+    return JSON.stringify(extracted);
+  }
+
+  const normalizedItems = extracted.items.map((rawItem) => {
+    if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+      return rawItem;
+    }
+    const dateVal = stripText(rawItem.date);
+    const startTimeVal = normalizeTime(rawItem.start_time);
+    const endTimeVal = normalizeTime(rawItem.end_time);
+    const titleVal = stripText(rawItem.title).slice(0, 120);
+    const memoVal = stripText(rawItem.memo).slice(0, 2000);
+    const placeNameVal = stripText(rawItem.place_name).slice(0, 200);
+
+    let candidateUrl = stripText(rawItem.place_url);
+    if (candidateUrl.startsWith("https://") && /\s/.test(candidateUrl)) {
+      candidateUrl = candidateUrl.replace(/\s+/g, "%20");
+    }
+    const placeUrlVal = isAllowedGoogleMapsUrl(candidateUrl) ? candidateUrl : "";
+
+    const itemObj = {
+      date: dateVal,
+      start_time: startTimeVal,
+      title: titleVal,
+      memo: memoVal,
+      place_name: placeNameVal,
+      place_url: placeUrlVal,
+    };
+    if (endTimeVal) {
+      itemObj.end_time = endTimeVal;
+    }
+    return itemObj;
+  });
+
+  return JSON.stringify({
+    version: 1,
+    items: normalizedItems,
+  });
 }
 
 function setExternalLlmFeedback(message, type = "") {
@@ -6035,7 +6167,8 @@ function buildExternalLlmPrompt() {
   lines.push(
     "설명이나 마크다운 코드 펜스 없이 JSON 객체 하나만 반환하세요. 최상위 구조는 {\"version\":1,\"items\":[...]}이며 items는 1~30개입니다.",
     "각 일정은 다음 키만 사용하세요: date(필수, YYYY-MM-DD), start_time(필수, 24시간 HH:MM), end_time(선택, HH:MM), title(필수, 1~120자), memo(선택, 최대 2000자), place_name(선택, 최대 200자), place_url(선택, HTTPS Google 지도 URL 또는 빈 문자열).",
-    "date는 여행 시작일과 종료일 사이로 지정하세요. end_time은 start_time보다 늦게 지정하세요. 위 키 외에 좌표, place ID, provider 등 다른 키를 추가하지 마세요. Google 지도 URL을 확실히 모르면 place_url을 빈 문자열로 두세요.",
+    "date는 여행 시작일과 종료일 사이로 지정하세요. end_time은 start_time보다 늦게 지정하세요. 위 키 외에 좌표, place ID, provider 등 다른 키를 추가하지 마세요.",
+    "place_url에는 유효한 HTTPS Google 지도 URL(예: https://www.google.com/maps/search/?api=1&query=장소명)을 넣고, 확실하지 않으면 빈 문자열(\"\")로 두세요. 답변에 인용 번호([1], [2] 등)는 절대 포함하지 마세요.",
     '형식 예시: {"version":1,"items":[{"date":"' + currentTrip.start_date + '","start_time":"09:00","end_time":"10:00","title":"박물관 방문","memo":"","place_name":"","place_url":""}]}',
   );
 
@@ -6403,12 +6536,14 @@ async function analyzeExternalLlmDraft() {
     return;
   }
 
+  const normalizedJson = normalizeExternalLlmJsonForRequest(rawJson);
+
   externalLlmAnalyzeButton.disabled = true;
   externalLlmJsonInput.disabled = true;
   try {
     const response = await apiFetch(`/api/trips/${TRIP_ID}/external-llm-itinerary/analyze`, {
       method: "POST",
-      body: JSON.stringify({ raw_json: rawJson }),
+      body: JSON.stringify({ raw_json: normalizedJson }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -6436,6 +6571,8 @@ async function importExternalLlmDraft() {
     return;
   }
 
+  const normalizedJson = normalizeExternalLlmJsonForRequest(externalLlmAnalyzedRawJson);
+
   externalLlmImportButton.disabled = true;
   externalLlmAnalyzeButton.disabled = true;
   externalLlmJsonInput.disabled = true;
@@ -6447,7 +6584,7 @@ async function importExternalLlmDraft() {
   try {
     const response = await apiFetch(`/api/trips/${TRIP_ID}/external-llm-itinerary/import`, {
       method: "POST",
-      body: JSON.stringify({ raw_json: externalLlmAnalyzedRawJson, selected_indices: selectedIndices }),
+      body: JSON.stringify({ raw_json: normalizedJson, selected_indices: selectedIndices }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -6456,6 +6593,7 @@ async function importExternalLlmDraft() {
     }
 
     await loadItineraries();
+    await loadPlaceCandidates();
     externalLlmJsonInput.value = "";
     clearExternalLlmAnalysis();
     setExternalLlmFeedback(`${data.created_count}개 일정을 여행에 추가했습니다.`, "success");
@@ -6483,14 +6621,28 @@ document.getElementById("trip-activity-toast-close")?.addEventListener("click", 
   const toastEl = document.getElementById("trip-activity-toast");
   if (toastEl) toastEl.hidden = true;
 });
+updatePushNotificationToggleUI();
 document.getElementById("enable-push-notifications-btn")?.addEventListener("click", async () => {
-  if (typeof window !== "undefined" && "Notification" in window && typeof Notification.requestPermission === "function") {
-    try {
-      await Notification.requestPermission();
-    } catch {
-      // ignore permission prompt errors
+  const nextEnabled = !isPushNotificationEnabled();
+  if (nextEnabled) {
+    setPushNotificationEnabled(true);
+    if (
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      Notification.permission === "default" &&
+      typeof Notification.requestPermission === "function"
+    ) {
+      try {
+        await Notification.requestPermission();
+      } catch {
+        // ignore permission prompt errors
+      }
     }
     updatePushNotificationToggleUI();
+    showActivityToast("실시간 변경 알림을 켰습니다.");
+  } else {
+    setPushNotificationEnabled(false);
+    showActivityToast("실시간 변경 알림을 껐습니다.");
   }
 });
 externalLlmAnalyzeButton.addEventListener("click", analyzeExternalLlmDraft);

@@ -34,8 +34,32 @@ MAP_URL_ALLOWED_HOSTS = {
 
 _DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TIME_PATTERN = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+_SINGLE_HOUR_TIME_PATTERN = re.compile(r"^(\d):([0-5]\d)$")
 _CODE_FENCE_PATTERN = re.compile(r"\A\s*```(?:json)?\s*(.*?)\s*```\s*\Z", re.IGNORECASE | re.DOTALL)
 _CODE_FENCE_BLOCK_PATTERN = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.IGNORECASE | re.DOTALL)
+_ZERO_WIDTH_PATTERN = re.compile(r"[\u200b\u200c\u200d\ufeff]")
+_CITATION_FOOTER_PATTERN = re.compile(r"\n\s*(?:citations|출처|references)\s*:\s*[\s\S]*\Z", re.IGNORECASE)
+_BRACE_CITATION_PATTERN = re.compile(r"([\}\]])\s*(?:\[\d+\])+")
+_QUOTE_CITATION_PATTERN = re.compile(r'"\s*(?:\[\d+\])+\s*(?=[,\}\]:])')
+_PRE_PUNCT_CITATION_PATTERN = re.compile(r"(?:\[\d+\])+\s*([,\}\]])")
+_INLINE_CITATION_PATTERN = re.compile(r"(?:\s*\[\d+\])+")
+
+
+def _strip_citations_and_zero_width(value: str) -> str:
+    cleaned = _ZERO_WIDTH_PATTERN.sub("", value)
+    cleaned = _INLINE_CITATION_PATTERN.sub("", cleaned)
+    return cleaned.strip()
+
+
+def _clean_llm_json_source(raw_text: str) -> str:
+    cleaned = _ZERO_WIDTH_PATTERN.sub("", raw_text).strip()
+    if not cleaned:
+        return cleaned
+    cleaned = _CITATION_FOOTER_PATTERN.sub("", cleaned).strip()
+    cleaned = _BRACE_CITATION_PATTERN.sub(r"\1", cleaned)
+    cleaned = _QUOTE_CITATION_PATTERN.sub('"', cleaned)
+    cleaned = _PRE_PUNCT_CITATION_PATTERN.sub(r"\1", cleaned)
+    return cleaned
 
 
 class ExternalLlmDraftItem(BaseModel):
@@ -48,6 +72,13 @@ class ExternalLlmDraftItem(BaseModel):
     memo: str = Field(default="", max_length=2000)
     place_name: str = Field(default="", max_length=200)
     place_url: str = ""
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def clean_date(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return _strip_citations_and_zero_width(value)
+        return value
 
     @field_validator("date")
     @classmethod
@@ -62,6 +93,19 @@ class ExternalLlmDraftItem(BaseModel):
             raise ValueError("INVALID_DATE_FORMAT")
         return value
 
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def normalize_time_input(cls, value: Any, info) -> Any:
+        if info.field_name == "end_time" and (value is None or (isinstance(value, str) and not _strip_citations_and_zero_width(value))):
+            return None
+        if isinstance(value, str):
+            cleaned = _strip_citations_and_zero_width(value)
+            single_match = _SINGLE_HOUR_TIME_PATTERN.fullmatch(cleaned)
+            if single_match:
+                return f"0{single_match.group(1)}:{single_match.group(2)}"
+            return cleaned
+        return value
+
     @field_validator("start_time", "end_time")
     @classmethod
     def validate_time(cls, value: str | None, info) -> str | None:
@@ -74,13 +118,27 @@ class ExternalLlmDraftItem(BaseModel):
     @field_validator("title", mode="before")
     @classmethod
     def trim_title(cls, value: Any) -> Any:
-        return value.strip() if isinstance(value, str) else value
+        return _strip_citations_and_zero_width(value) if isinstance(value, str) else value
 
-    @field_validator("end_time", mode="before")
+    @field_validator("memo", "place_name", mode="before")
     @classmethod
-    def reject_null_end_time(cls, value: Any) -> Any:
+    def clean_optional_text(cls, value: Any) -> Any:
         if value is None:
-            raise ValueError("INVALID_TIME_FORMAT")
+            return ""
+        if isinstance(value, str):
+            return _strip_citations_and_zero_width(value)
+        return value
+
+    @field_validator("place_url", mode="before")
+    @classmethod
+    def clean_place_url(cls, value: Any) -> Any:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            cleaned = _strip_citations_and_zero_width(value)
+            if cleaned.startswith("https://") and " " in cleaned:
+                cleaned = re.sub(r"\s+", "%20", cleaned)
+            return cleaned
         return value
 
     @field_validator("place_url")
@@ -104,6 +162,7 @@ class ExternalLlmDraftItemResult:
     end_at: datetime | None = None
     location_name: str | None = None
     memo: str | None = None
+    place_url: str | None = None
 
 
 def is_allowed_map_url(value: str, provider: str = "google") -> bool:
@@ -136,7 +195,7 @@ def _reject_json_constant(value: str) -> None:
 
 def extract_json_object_text(raw_text: str) -> str:
     """외부 LLM 출력 문자열에서 JSON 객체({...}) 부분만 추출한다."""
-    content = raw_text.strip()
+    content = _clean_llm_json_source(raw_text)
     if not content:
         return content
 
@@ -152,7 +211,7 @@ def extract_json_object_text(raw_text: str) -> str:
     # 2. 마크다운 코드 블록(```json ... ``` 또는 ``` ... ```) 내부 탐색
     fallback_dict_text: str | None = None
     for match in _CODE_FENCE_BLOCK_PATTERN.finditer(content):
-        block = match.group(1).strip()
+        block = _clean_llm_json_source(match.group(1))
         if not block:
             continue
         try:
@@ -194,7 +253,7 @@ def extract_json_object_text(raw_text: str) -> str:
 
     fenced = _CODE_FENCE_PATTERN.fullmatch(content)
     if fenced:
-        return fenced.group(1).strip()
+        return _clean_llm_json_source(fenced.group(1))
     return content
 
 
@@ -262,8 +321,10 @@ def parse_external_llm_draft(raw_json: str, trip: Trip) -> list[ExternalLlmDraft
 
     for index, raw_item in enumerate(raw_items):
         preview_title = raw_item.get("title", "") if isinstance(raw_item, dict) else ""
-        preview_title = preview_title.strip()[:120] if isinstance(preview_title, str) else ""
+        preview_title = _strip_citations_and_zero_width(preview_title)[:120] if isinstance(preview_title, str) else ""
         preview_date = raw_item.get("date") if isinstance(raw_item, dict) else None
+        if isinstance(preview_date, str):
+            preview_date = _strip_citations_and_zero_width(preview_date)
         parsed_date = None
         if isinstance(preview_date, str) and _DATE_PATTERN.fullmatch(preview_date):
             try:
@@ -314,6 +375,7 @@ def parse_external_llm_draft(raw_json: str, trip: Trip) -> list[ExternalLlmDraft
                 end_at=end_at,
                 location_name=item.place_name or None,
                 memo="\n".join(memo_parts) or None,
+                place_url=item.place_url or None,
             )
         )
 

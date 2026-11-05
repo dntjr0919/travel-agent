@@ -358,3 +358,121 @@ def test_batch_save_rolls_back_all_items_when_flush_fails(client, db_session, mo
 
     monkeypatch.setattr(db_session, "flush", original_flush)
     assert db_session.scalar(select(func.count()).select_from(ItineraryItem)) == 0
+
+
+def test_three_real_llm_samples_analyze_and_import_with_auto_place_candidates(client):
+    register_and_login(client, "external-llm-3samples@example.com")
+    trip = create_trip(
+        client,
+        title="간사이 겨울 여행",
+        destination="오사카·교토",
+        start_date="2027-01-17",
+        end_date="2027-01-22",
+        timezone="Asia/Tokyo",
+    )
+    trip_id = trip["id"]
+    dates = ["2027-01-17", "2027-01-18", "2027-01-19", "2027-01-20", "2027-01-21", "2027-01-22"]
+
+    # 샘플 1 (Gemini): place_url이 ""인 23개 일정
+    gemini_items = [
+        {
+            "date": dates[i % len(dates)],
+            "start_time": f"{9 + (i % 8):02d}:00",
+            "end_time": f"{10 + (i % 8):02d}:00",
+            "title": f"Gemini 일정 {i + 1}",
+            "memo": f"메모 {i + 1}",
+            "place_name": f"오사카 명소 {i + 1}",
+            "place_url": "",
+        }
+        for i in range(23)
+    ]
+    gemini_raw = json.dumps({"version": 1, "items": gemini_items}, ensure_ascii=False)
+    gemini_analyze = client.post(
+        f"/api/trips/{trip_id}/external-llm-itinerary/analyze",
+        json={"raw_json": gemini_raw},
+    )
+    assert gemini_analyze.status_code == 200
+    assert len(gemini_analyze.json()["items"]) == 23
+    assert all(item["valid"] for item in gemini_analyze.json()["items"])
+
+    # 샘플 2 (ChatGPT): 표준 Google Maps 검색 URL이 포함된 25개 일정 (일부 장소 중복 포함)
+    chatgpt_places = [
+        ("간사이 국제공항", "https://www.google.com/maps/search/?api=1&query=Kansai+International+Airport"),
+        ("도톤보리", "https://www.google.com/maps/search/?api=1&query=Dotonbori+Osaka"),
+        ("오사카 성", "https://www.google.com/maps/search/?api=1&query=Osaka+Castle"),
+        ("기요미즈데라", "https://www.google.com/maps/search/?api=1&query=Kiyomizu-dera+Kyoto"),
+        ("후시미 이나리 신사", "https://www.google.com/maps/search/?api=1&query=Fushimi+Inari+Taisha"),
+    ]
+    chatgpt_items = [
+        {
+            "date": dates[i % len(dates)],
+            "start_time": f"{9 + (i % 9):02d}:00",
+            "end_time": f"{10 + (i % 9):02d}:00",
+            "title": f"ChatGPT 일정 {i + 1}",
+            "memo": f"상세 안내 {i + 1}",
+            "place_name": chatgpt_places[i % len(chatgpt_places)][0],
+            "place_url": chatgpt_places[i % len(chatgpt_places)][1],
+        }
+        for i in range(25)
+    ]
+    chatgpt_raw = json.dumps({"version": 1, "items": chatgpt_items}, ensure_ascii=False)
+    chatgpt_analyze = client.post(
+        f"/api/trips/{trip_id}/external-llm-itinerary/analyze",
+        json={"raw_json": chatgpt_raw},
+    )
+    assert chatgpt_analyze.status_code == 200
+    assert len(chatgpt_analyze.json()["items"]) == 25
+    assert all(item["valid"] for item in chatgpt_analyze.json()["items"])
+
+    chatgpt_import = client.post(
+        f"/api/trips/{trip_id}/external-llm-itinerary/import",
+        json={"raw_json": chatgpt_raw, "selected_indices": list(range(25))},
+    )
+    assert chatgpt_import.status_code == 200
+    assert chatgpt_import.json()["created_count"] == 25
+
+    candidates = client.get(f"/api/trips/{trip_id}/place-candidates").json()
+    assert len(candidates) == len(chatgpt_places)
+    by_name = {c["name"]: c for c in candidates}
+    for place_name, place_url in chatgpt_places:
+        assert place_name in by_name
+        assert by_name[place_name]["map_url"] == place_url
+        assert by_name[place_name]["provider"] == "google"
+
+    # 같은 장소를 다시 Import해도 중복 등록되지 않는지 확인
+    repeat_import = client.post(
+        f"/api/trips/{trip_id}/external-llm-itinerary/import",
+        json={"raw_json": chatgpt_raw, "selected_indices": [0, 1]},
+    )
+    assert repeat_import.status_code == 200
+    candidates_after_repeat = client.get(f"/api/trips/{trip_id}/place-candidates").json()
+    assert len(candidates_after_repeat) == len(chatgpt_places)
+
+    # 샘플 3 (Perplexity): 28개 일정 + 모바일 복사 시 섞여 들어오는 [1], [2] 인용 각주 및 Citations 푸터
+    perplexity_lines = ['{\u200b"version": 1, "items": [']
+    for i in range(28):
+        comma = "," if i < 27 else ""
+        perplexity_lines.append(
+            f'{{"date": "{dates[i % len(dates)]}"[1], "start_time": "{9 + (i % 9)}:00", '
+            f'"end_time": "{10 + (i % 9):02d}:00", "title": "Perplexity 일정 {i + 1}[1][2]", '
+            f'"memo": "현지 팁 {i + 1} [3]", "place_name": "교토 스팟 {i + 1}[1]", '
+            f'"place_url": "https://www.google.com/maps/search/?api=1&query=Kyoto+Spot+{i + 1}[2]"}}[1]{comma}'
+        )
+    perplexity_lines.append("]}[1][2]\n\nCitations:\n[1] https://example.com/1\n[2] https://example.com/2")
+    perplexity_raw = "\n".join(perplexity_lines)
+
+    perplexity_analyze = client.post(
+        f"/api/trips/{trip_id}/external-llm-itinerary/analyze",
+        json={"raw_json": perplexity_raw},
+    )
+    assert perplexity_analyze.status_code == 200
+    assert len(perplexity_analyze.json()["items"]) == 28
+    assert all(item["valid"] for item in perplexity_analyze.json()["items"])
+    assert perplexity_analyze.json()["items"][0]["title"] == "Perplexity 일정 1"
+
+    perplexity_import = client.post(
+        f"/api/trips/{trip_id}/external-llm-itinerary/import",
+        json={"raw_json": perplexity_raw, "selected_indices": list(range(28))},
+    )
+    assert perplexity_import.status_code == 200
+    assert perplexity_import.json()["created_count"] == 28
