@@ -9,6 +9,7 @@ __pycache__/
 venv/
 .pytest_cache/
 *.egg-info/
+repomix-output.xml
 
 # 추가 환경변수 파일 보호
 .env.*
