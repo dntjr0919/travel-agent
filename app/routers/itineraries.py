@@ -25,7 +25,7 @@ from app.schemas.itinerary import (
     ItineraryRouteResponse,
     ItineraryUpdate,
 )
-from app.services.external_llm_itinerary_service import parse_external_llm_draft
+from app.services.external_llm_itinerary_service import is_allowed_map_url, parse_external_llm_draft
 from app.services.itinerary_route_service import calculate_itinerary_routes
 from app.services.itinerary_service import (
     create_itineraries,
@@ -119,6 +119,14 @@ def import_external_llm_itinerary(
 
         loc_key = loc_name.lower()
         map_url = item.place_url.strip() if item.place_url and item.place_url.strip() else None
+
+        provider = "google"
+        if map_url:
+            if is_allowed_map_url(map_url, "kakao"):
+                provider = "kakao"
+            elif is_allowed_map_url(map_url, "naver"):
+                provider = "naver"
+
         if map_url and len(map_url) <= 255:
             ext_id = map_url
         else:
@@ -130,7 +138,7 @@ def import_external_llm_itinerary(
             )
 
         matched = (
-            by_ext_id.get(("google", ext_id))
+            by_ext_id.get((provider, ext_id))
             or by_name.get(loc_key)
             or (by_map_url.get(map_url) if map_url else None)
         )
@@ -143,7 +151,7 @@ def import_external_llm_itinerary(
 
         candidate = PlaceCandidate(
             trip_id=trip_id,
-            provider="google",
+            provider=provider,
             external_place_id=ext_id,
             name=loc_name,
             map_url=map_url,
@@ -151,7 +159,7 @@ def import_external_llm_itinerary(
         )
         db.add(candidate)
         db.flush()
-        by_ext_id[("google", ext_id)] = candidate
+        by_ext_id[(provider, ext_id)] = candidate
         by_name[loc_key] = candidate
         if map_url:
             by_map_url[map_url] = candidate

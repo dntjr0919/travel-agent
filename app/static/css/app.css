@@ -3694,3 +3694,513 @@ body:not(:has(.auth-card)) .nav-guest-links {
   font-size: 0.98rem;
   color: var(--ui-text);
 }
+
+
+/* ==========================================================================
+   Google Stitch ('Serene Expedition') Design System Upgrade
+   ========================================================================== */
+
+:root {
+  /* Surface & Background Tokens */
+  --color-bg: #fbf9f3;
+  --color-surface: #ffffff;
+  --color-surface-low: #f5f3ed;
+  --color-surface-container: #f0eee8;
+  --color-border: #e7e4dc;
+
+  /* Brand & Accent Tokens */
+  --color-primary: #006762;
+  --color-primary-hover: #00504c;
+  --color-primary-container: #20827c;
+  --color-primary-soft: #eef7f6;
+  --color-primary-fixed: #dcf7ee;
+  --color-primary-fixed-text: #135b4c;
+  --color-secondary-peach: #ffece3;
+  --color-secondary-peach-text: #a8451f;
+
+  /* Typography & Elevation Tokens */
+  --color-text: #191c1d;
+  --color-muted: #6e7978;
+  --shadow-card: 0 1px 3px 0 rgba(25, 28, 29, 0.03), 0 2px 8px 0 rgba(25, 28, 29, 0.04);
+  --shadow-hover: 0 4px 14px 0 rgba(25, 28, 29, 0.07), 0 1px 3px 0 rgba(25, 28, 29, 0.04);
+  --shadow-floating: 0 12px 32px -4px rgba(25, 28, 29, 0.14), 0 4px 12px -2px rgba(25, 28, 29, 0.06);
+
+  /* Legacy Alias Synchronization */
+  --ui-bg: var(--color-bg);
+  --ui-surface: var(--color-surface);
+  --ui-surface-soft: var(--color-primary-soft);
+  --ui-text: var(--color-text);
+  --ui-text-muted: var(--color-muted);
+  --ui-primary: var(--color-primary);
+  --ui-primary-strong: var(--color-primary-hover);
+  --ui-primary-soft: var(--color-primary-soft);
+  --ui-border: var(--color-border);
+  --ui-border-strong: #d1cec4;
+  --ui-radius-card: 16px;
+  --ui-radius-control: 10px;
+  --ui-shadow-card: var(--shadow-card);
+  --ui-shadow-drawer: -12px 0 32px rgba(25, 28, 29, 0.12);
+  --color-card: var(--color-surface);
+  --color-primary-dark: var(--color-primary-hover);
+
+  font-family: 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+.brand {
+  font-family: 'Plus Jakarta Sans', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  letter-spacing: -0.015em;
+}
+
+/* 1. Topbar (Glassmorphism & Brand) */
+.topbar {
+  background: rgba(251, 249, 243, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.brand {
+  color: #006762;
+  font-weight: 800;
+  font-size: 1.15rem;
+}
+
+/* 2. Trip Header Hero Card & Presence Bar */
+#trip-header {
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+  padding: 1.35rem 1.5rem;
+  margin-bottom: 0.85rem;
+}
+
+#trip-header .trip-header-info h1 {
+  color: var(--color-text);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+#trip-header .trip-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+#trip-header .trip-header-meta > span {
+  background: #f5f3ed;
+  border: 1px solid #e7e4dc;
+  border-radius: 9999px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-text);
+  display: inline-flex;
+  align-items: center;
+}
+
+#trip-header .trip-header-meta > span + span {
+  padding-inline-start: 0.75rem;
+  border-inline-start: 1px solid #e7e4dc;
+}
+
+#trip-header #trip-header-domestic-badge {
+  margin-left: 0 !important;
+  border-radius: 9999px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid #ecd400;
+}
+
+.presence-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 0.55rem 1rem;
+  margin: 0 0 1.15rem;
+  box-shadow: var(--shadow-card);
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.presence-users {
+  display: flex;
+  align-items: center;
+  padding-left: 0.25rem;
+}
+
+.presence-avatar {
+  width: 32px;
+  height: 32px;
+  margin-left: -6px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(25, 28, 29, 0.12);
+}
+
+.presence-avatar:first-child {
+  margin-left: 0;
+}
+
+.presence-notification-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  background: #f5f3ed;
+  border: 1px solid #e7e4dc;
+  color: var(--color-muted);
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.presence-notification-btn:hover {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.presence-notification-btn.is-active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+/* 3. Desktop 2-Column Split Layout */
+.trip-schedule-card,
+.trip-map-card {
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+  padding: 1.25rem;
+}
+
+@media (min-width: 960px) {
+  .trip-main-layout {
+    grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.85fr);
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  #trip-map-panel {
+    position: sticky;
+    top: 5rem;
+  }
+}
+
+/* 4. Schedule Timeline Cards, Category/Status Badges, Details & Route Legs */
+.trip-schedule-card .item-card {
+  border-radius: 16px;
+  border: 1px solid #e7e4dc;
+  background: #ffffff;
+  box-shadow: var(--shadow-card);
+  padding: 0.9rem 1rem;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.trip-schedule-card .item-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-hover);
+  border-color: #d1cec4;
+}
+
+.badge {
+  border-radius: 9999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.category-transportation {
+  background: #dcf7ee;
+  color: #135b4c;
+}
+
+.category-food {
+  background: #ffece3;
+  color: #a8451f;
+}
+
+.category-sightseeing {
+  background: #e2f4f2;
+  color: #00504c;
+}
+
+.category-accommodation {
+  background: #e8eefc;
+  color: #1e40af;
+}
+
+.category-shopping {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.category-other {
+  background: #f0eee8;
+  color: #3e4948;
+}
+
+.status-planned,
+.status-completed,
+.status-cancelled {
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.status-planned {
+  background: #eef7f6;
+  color: #006762;
+}
+
+.status-completed {
+  background: #dcf7ee;
+  color: #135b4c;
+}
+
+.status-cancelled {
+  background: #faeae6;
+  color: #a94f45;
+}
+
+.trip-schedule-card .item-details {
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #e7e4dc;
+  border-left: 3px solid #006762;
+  border-radius: 12px;
+  background: #f5f3ed;
+}
+
+.map-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #ffffff;
+  border: 1px solid #d1cec4;
+  border-radius: 9999px;
+  padding: 0.35rem 0.8rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: #006762;
+  text-decoration: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.map-link:hover {
+  background: #eef7f6;
+  border-color: #006762;
+  text-decoration: none;
+  box-shadow: var(--shadow-card);
+}
+
+.itinerary-route-leg {
+  display: inline-flex;
+  align-items: center;
+  background: #f0eee8;
+  color: #3e4948;
+  border: 1px dashed #d1cec4;
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  margin: 0.25rem 0 0.25rem 1.25rem;
+}
+
+/* 5. Unified Map Panel & Floating Tools Button */
+.travel-map-tabs {
+  background: #f0eee8;
+  padding: 0.25rem;
+  border-radius: 9999px;
+  gap: 0.25rem;
+}
+
+.travel-map-tab {
+  border-radius: 9999px;
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.travel-map-tab.is-active {
+  background: #ffffff;
+  color: #006762;
+  font-weight: 700;
+  border-radius: 9999px;
+  box-shadow: var(--shadow-card);
+}
+
+#travel-map {
+  border-radius: 16px;
+  overflow: hidden;
+  min-height: 440px;
+  border: 1px solid #e7e4dc;
+  background: #f0eee8;
+}
+
+#open-tools-floating-btn,
+.trip-tools-floating-btn {
+  background: #1b1c18;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  padding: 0.75rem 1.25rem;
+  box-shadow: var(--shadow-floating);
+  font-weight: 700;
+  transition: background-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+#open-tools-floating-btn:hover,
+.trip-tools-floating-btn:hover {
+  background: #006762;
+  border-color: #00504c;
+  transform: translateY(-1px);
+}
+
+/* 6. Trip Tools Slide Drawer */
+#trip-tools-drawer,
+.trip-tools-drawer {
+  background: #ffffff;
+  border-left: 1px solid #e7e4dc;
+  box-shadow: -12px 0 32px rgba(25, 28, 29, 0.12);
+}
+
+.trip-tools-tab.is-active {
+  border-bottom: 2.5px solid #006762;
+  color: #006762;
+  font-weight: 700;
+}
+
+.tool-accordion-item {
+  border: 1px solid #e7e4dc;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.tool-accordion-toggle {
+  background: #f5f3ed;
+  color: var(--color-text);
+}
+
+.tool-accordion-toggle:hover,
+.tool-accordion-toggle[aria-expanded="true"] {
+  background: #eef7f6;
+  color: #006762;
+}
+
+.place-candidate-card,
+.place-result-card,
+.trip-tools-panel .travel-booking-candidate-card {
+  border: 1px solid #e7e4dc;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: var(--shadow-card);
+}
+
+/* 7. Mobile Responsive Segment Control & Cards */
+@media (max-width: 760px) {
+  #trip-header {
+    padding: 1.05rem 1.1rem;
+    border-radius: 16px;
+  }
+
+  .trip-mobile-tabs {
+    background: #f0eee8;
+    padding: 0.3rem;
+    border-radius: 14px;
+  }
+
+  .trip-mobile-tab {
+    border-radius: 10px;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+
+  .trip-mobile-tab.is-active {
+    background: #ffffff;
+    box-shadow: var(--shadow-card);
+    border-radius: 10px;
+    color: #006762;
+    font-weight: 700;
+  }
+
+  .trip-schedule-card,
+  .trip-map-card {
+    padding: 0.95rem;
+    border-radius: 16px;
+  }
+
+  .trip-schedule-card .item-card {
+    padding: 0.75rem 0.85rem;
+    border-radius: 14px;
+  }
+
+  #travel-map {
+    min-height: 420px;
+  }
+}
+
+/* 8. My Trips List Page (trips.html) */
+.trips-page .trip-card {
+  border-radius: 20px;
+  border: 1px solid #e7e4dc;
+  border-top: 4px solid #006762;
+  background: #ffffff;
+  box-shadow: var(--shadow-card);
+  padding: 1.3rem;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.trips-page .trip-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+  border-color: #d1cec4;
+  border-top-color: #00504c;
+}
+
+.trips-page .trip-card .badge {
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.trips-page .trip-card .role-owner {
+  background: #dcf7ee;
+  color: #135b4c;
+}
+
+.trips-page .trip-card .role-editor {
+  background: #eef7f6;
+  color: #006762;
+}
+
+.trips-page .trip-card .role-viewer {
+  background: #f0eee8;
+  color: #6e7978;
+}

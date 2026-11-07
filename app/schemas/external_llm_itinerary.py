@@ -11,7 +11,7 @@ class ExternalLlmItineraryAnalyzeRequest(BaseModel):
 
 class ExternalLlmItineraryImportRequest(BaseModel):
     raw_json: str
-    selected_indices: list[StrictInt] = Field(min_length=1, max_length=30)
+    selected_indices: list[StrictInt] = Field(min_length=1, max_length=200)
 
 
 class ExternalLlmItineraryItemAnalysis(BaseModel):

@@ -842,3 +842,69 @@ def test_general_international_search_unchanged(monkeypatch):
     assert results == []
     assert calls[0]["query"] == "Osaka food"
     assert calls[0]["location_bias"] is None
+
+
+def test_domestic_ai_itinerary_draft_uses_kakao_search(client, monkeypatch):
+    from app.services import place_search_service
+    from app.services.map_providers.base import PlaceSearchResult
+
+    register_and_login(client, "owner-domestic-ai@example.com")
+    trip = create_trip(client, destination="제주도", timezone="Asia/Seoul")
+
+    _mock_gemini(
+        monkeypatch,
+        [
+            {"queries": [{"query": "제주도 흑돼지 맛집", "category": "food"}]},
+            {
+                "days": [
+                    {
+                        "date": "2026-11-01",
+                        "items": [
+                            {
+                                "external_place_id": "kakao-spot-1",
+                                "reason": "맛있는 제주 흑돼지 전문점",
+                                "suggested_stay_minutes": 90,
+                            }
+                        ],
+                    }
+                ],
+                "warnings": [],
+            },
+        ],
+    )
+
+    kakao_calls = []
+
+    def fake_kakao_search(query: str, api_key: str) -> list[PlaceSearchResult]:
+        kakao_calls.append(query)
+        return [
+            PlaceSearchResult(
+                provider="kakao",
+                external_place_id="kakao-spot-1",
+                name="제주 흑돼지 본점",
+                address="제주특별자치도 제주시",
+                latitude=33.5000,
+                longitude=126.5200,
+                category="음식점",
+                map_url="https://map.kakao.com/link/map/kakao-spot-1",
+            )
+        ]
+
+    monkeypatch.setattr(place_search_service, "search_kakao_places", fake_kakao_search)
+
+    res = client.post(
+        f"/api/trips/{trip['id']}/ai-itinerary-drafts",
+        json={
+            "style": "제주 맛집 탐방",
+            "interests": ["food"],
+            "pace": "balanced",
+            "model": "gemini_flash_lite",
+        },
+    )
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["destination"] == "제주도"
+    assert data["days"][0]["items"][0]["external_place_id"] == "kakao-spot-1"
+    assert data["days"][0]["items"][0]["provider"] == "kakao"
+    assert len(kakao_calls) >= 1

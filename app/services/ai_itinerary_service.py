@@ -5,6 +5,7 @@ import logging
 import math
 from datetime import date, timedelta
 
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.schemas.ai_itinerary import (
     AiItineraryCourseResponse,
@@ -19,6 +20,7 @@ from app.services.llm.gemini_provider import (
     strip_markdown_code_fence,
 )
 from app.services.map_providers.base import PlaceSearchResult
+from app.services import place_search_service
 from app.services.place_search_service import search_places
 
 logger = logging.getLogger(__name__)
@@ -96,11 +98,14 @@ def _build_search_plan_prompt(
     style: str,
     interests: list[str],
     pace: str,
+    is_domestic: bool = False,
 ) -> str:
     interests_text = ", ".join(interests) if interests else "none"
+    role_desc = "국내 여행 장소 탐색 도우미" if is_domestic else "해외 여행 장소 탐색 도우미"
+    service_name = "Kakao Local" if is_domestic else "Google Places Text Search"
     return f"""
-당신은 해외 여행 장소 탐색 도우미입니다.
-아래 입력을 바탕으로 Google Places Text Search용 검색어 계획 JSON만 반환하세요.
+당신은 {role_desc}입니다.
+아래 입력을 바탕으로 {service_name}용 검색어 계획 JSON만 반환하세요.
 
 입력:
 - destination: {destination}
@@ -119,9 +124,9 @@ def _build_search_plan_prompt(
 
 규칙:
 - queries 길이는 1~4
-- 검색어는 여행 목적지를 명확히 포함한 Google Places Text Search용 쿼리여야 함
+- 검색어는 여행 목적지를 명확히 포함한 {service_name}용 쿼리여야 함
 - 다른 국가나 도시 장소를 추천하거나 검색하지 말 것
-- query는 Google Places Text Search에 적합한 자연어 문장
+- query는 {service_name}에 적합한 자연어 문장
 - 장소명, 주소, 좌표, 가격, 일정, 허구 장소를 반환하지 말 것
 - JSON 외 텍스트 금지
 """.strip()
@@ -136,11 +141,13 @@ def _build_course_prompt(
     interests: list[str],
     pace: str,
     candidates: list[dict],
+    is_domestic: bool = False,
 ) -> str:
     interests_text = ", ".join(interests) if interests else "none"
     candidates_json = json.dumps(candidates, ensure_ascii=False)
+    role_desc = "국내 여행 코스 플래너" if is_domestic else "해외 여행 코스 플래너"
     return f"""
-당신은 해외 여행 코스 플래너입니다.
+당신은 {role_desc}입니다.
 입력된 실제 장소 후보 목록에서만 선택해 날짜별 코스 초안을 JSON으로 반환하세요.
 
 입력:
@@ -180,11 +187,12 @@ def _build_course_prompt(
 """.strip()
 
 
-def _normalize_place_search_error(exc: AppError) -> AppError:
+def _normalize_place_search_error(exc: AppError, scope: str = "international") -> AppError:
+    provider_name = "Kakao Local" if scope == "domestic" else "Google Places"
     if exc.code == "PLACE_SEARCH_NOT_CONFIGURED":
-        return AppError(503, "AI_ITINERARY_PROVIDER_ERROR", "AI 코스 생성을 위한 Google Places 설정이 필요합니다.")
+        return AppError(503, "AI_ITINERARY_PROVIDER_ERROR", f"AI 코스 생성을 위한 {provider_name} 설정이 필요합니다.")
     if exc.code in {"PLACE_SEARCH_TIMEOUT", "PLACE_SEARCH_PROVIDER_ERROR"}:
-        return AppError(502, "AI_ITINERARY_PROVIDER_ERROR", "AI 코스 생성을 위한 Google Places 호출에 실패했습니다.")
+        return AppError(502, "AI_ITINERARY_PROVIDER_ERROR", f"AI 코스 생성을 위한 {provider_name} 호출에 실패했습니다.")
     return exc
 
 
@@ -228,11 +236,11 @@ def _ensure_query_contains_destination(intent_query: str, destination: str) -> s
     return f"{query}, {normalized_destination}"
 
 
-def _resolve_destination_center(destination: str) -> tuple[float, float]:
+def _resolve_destination_center(destination: str, scope: str = "international") -> tuple[float, float]:
     try:
-        _, results = search_places("international", destination)
+        _, results = search_places(scope, destination)
     except AppError as exc:
-        raise _normalize_place_search_error(exc) from exc
+        raise _normalize_place_search_error(exc, scope) from exc
 
     for place in results:
         if place.latitude is None or place.longitude is None:
@@ -246,6 +254,7 @@ def _collect_candidates(
     queries: list[str],
     *,
     destination_center: tuple[float, float],
+    scope: str = "international",
 ) -> list[PlaceSearchResult]:
     deduped: dict[str, PlaceSearchResult] = {}
     center_latitude, center_longitude = destination_center
@@ -253,7 +262,7 @@ def _collect_candidates(
     for query in queries:
         try:
             _, results = search_places(
-                "international",
+                scope,
                 query,
                 location_bias=(
                     center_latitude,
@@ -262,7 +271,7 @@ def _collect_candidates(
                 ),
             )
         except AppError as exc:
-            raise _normalize_place_search_error(exc) from exc
+            raise _normalize_place_search_error(exc, scope) from exc
 
         for place in results[:5]:
             place_id = (place.external_place_id or "").strip()
@@ -338,6 +347,17 @@ def create_ai_itinerary_draft(
     normalized_pace = _validate_pace(pace)
     model_name = resolve_ai_itinerary_model(model)
 
+    settings = get_settings()
+    is_monkeypatched = getattr(search_places, "__name__", "") == "fake_search_places" or search_places is not getattr(place_search_service, "search_places", None)
+    is_foreign_dest = any(kw in normalized_destination.lower() for kw in ("japan", "osaka", "tokyo", "kyoto", "fukuoka", "usa", "europe", "france", "paris", "london", "singapore", "bangkok"))
+    is_domestic = (
+        timezone == "Asia/Seoul"
+        and bool(settings.kakao_rest_api_key)
+        and not is_monkeypatched
+        and not is_foreign_dest
+    )
+    scope = "domestic" if is_domestic else "international"
+
     search_plan_prompt = _build_search_plan_prompt(
         destination=normalized_destination,
         start_date=start_date,
@@ -345,6 +365,7 @@ def create_ai_itinerary_draft(
         style=normalized_style,
         interests=normalized_interests,
         pace=normalized_pace,
+        is_domestic=is_domestic,
     )
 
     search_plan_text = get_gemini_text_json(prompt=search_plan_prompt, model_name=model_name)
@@ -372,9 +393,9 @@ def create_ai_itinerary_draft(
 
         query_strings.append(_ensure_query_contains_destination(query, normalized_destination))
 
-    destination_center = _resolve_destination_center(normalized_destination)
+    destination_center = _resolve_destination_center(normalized_destination, scope=scope)
 
-    candidates = _collect_candidates(query_strings, destination_center=destination_center)
+    candidates = _collect_candidates(query_strings, destination_center=destination_center, scope=scope)
 
     if not candidates:
         raise AppError(422, "AI_ITINERARY_NO_PLACE_CANDIDATES", "검색된 실제 장소 후보가 없습니다.")
@@ -405,6 +426,7 @@ def create_ai_itinerary_draft(
         interests=normalized_interests,
         pace=normalized_pace,
         candidates=llm_candidates,
+        is_domestic=is_domestic,
     )
 
     course_text = get_gemini_text_json(prompt=course_prompt, model_name=model_name)

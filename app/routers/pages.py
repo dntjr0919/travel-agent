@@ -87,6 +87,7 @@ def trip_detail_page(
         return RedirectResponse(url="/login")
 
     settings = get_settings()
+    kakao_javascript_key = settings.resolved_kakao_javascript_key
 
     return templates.TemplateResponse(
         request,
@@ -94,6 +95,7 @@ def trip_detail_page(
         {
             "trip_id": trip_id,
             "google_maps_browser_api_key": settings.google_maps_browser_api_key,
+            "kakao_javascript_key": kakao_javascript_key,
         },
     )
 

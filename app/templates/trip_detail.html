@@ -984,6 +984,8 @@ const PLACE_CATEGORY_TO_ITINERARY = {
   department_store: "shopping",
 };
 const HAS_GOOGLE_MAPS_BROWSER_API_KEY = {{ "true" if google_maps_browser_api_key else "false" }};
+const HAS_KAKAO_JAVASCRIPT_KEY = {{ "true" if kakao_javascript_key else "false" }};
+const KAKAO_JAVASCRIPT_KEY = "{{ kakao_javascript_key | urlencode }}";
 const BOOKING_PROVIDER_HINTS = [
   { match: "agoda.com", provider: "Agoda", kind: "accommodation" },
   { match: "booking.com", provider: "Booking.com", kind: "accommodation" },
@@ -1019,6 +1021,15 @@ updateTravelMapTabCounts();
 let travelMap = null;
 let travelMapInfoWindow = null;
 let travelMapMarkers = [];
+let kakaoMap = null;
+let kakaoInfoWindow = null;
+let kakaoMarkers = [];
+let kakaoSdkLoading = false;
+let kakaoSdkReady = false;
+let kakaoSdkLoadFailed = false;
+let kakaoMapLoadFailed = false;
+let kakaoSdkLoadPromise = null;
+let currentMapEngine = null;
 let itineraryMarkerById = new Map();
 let lastItineraryMarkerClickAt = 0;
 let itineraryCardHighlightTimer = null;
@@ -1629,6 +1640,8 @@ async function loadTrip() {
   currentTrip = await res.json();
   currentRole = currentTrip.my_role;
   renderHeader();
+  syncDomesticInternationalUI();
+  refreshTravelMap();
 }
 
 function renderHeader() {
@@ -1756,6 +1769,7 @@ async function updateTrip() {
   currentRole = data.my_role;
 
   renderHeader();
+  syncDomesticInternationalUI();
   hideTripEditForm();
 
   await loadItineraries();
@@ -2250,12 +2264,206 @@ function clearTravelMapMarkers() {
   travelMapMarkers = [];
 }
 
+function clearKakaoMapMarkers() {
+  itineraryMarkerById = new Map();
+  if (!Array.isArray(kakaoMarkers)) {
+    kakaoMarkers = [];
+    return;
+  }
+
+  for (const marker of kakaoMarkers) {
+    if (marker && typeof marker.setMap === "function") {
+      marker.setMap(null);
+    }
+  }
+
+  kakaoMarkers = [];
+}
+
 function clearTravelMapState() {
   clearTravelMapMarkers();
+  clearKakaoMapMarkers();
 
   if (travelMapInfoWindow && typeof travelMapInfoWindow.close === "function") {
     travelMapInfoWindow.close();
   }
+  if (kakaoInfoWindow && typeof kakaoInfoWindow.close === "function") {
+    kakaoInfoWindow.close();
+  }
+}
+
+function isDomesticTrip() {
+  return Boolean(currentTrip && currentTrip.timezone === "Asia/Seoul");
+}
+
+function getActiveMapProvider() {
+  if (isDomesticTrip()) {
+    if (HAS_KAKAO_JAVASCRIPT_KEY) {
+      return "kakao";
+    }
+    if (HAS_GOOGLE_MAPS_BROWSER_API_KEY) {
+      return "google";
+    }
+    return "none";
+  }
+  return HAS_GOOGLE_MAPS_BROWSER_API_KEY ? "google" : "none";
+}
+
+function getKakaoMapLoadFailureMessage() {
+  return `카카오 지도를 불러오지 못했습니다. Kakao Developers 콘솔에서 (1) [앱 키]의 'JavaScript 키'가 맞는지, (2) [플랫폼 > Web]에 현재 주소(${window.location.origin})가 등록되었는지, (3) [제품 설정 > 카카오맵] 사용 설정이 ON인지 확인하세요.`;
+}
+
+function getDefaultDomesticCenter() {
+  const text = `${currentTrip?.destination || ""} ${currentTrip?.title || ""}`;
+  if (text.includes("제주") || text.includes("서귀포")) {
+    return { lat: 33.4996, lng: 126.5312, level: 9 };
+  }
+  if (text.includes("부산") || text.includes("해운대") || text.includes("광안리")) {
+    return { lat: 35.1796, lng: 129.0756, level: 7 };
+  }
+  if (text.includes("경주")) {
+    return { lat: 35.8562, lng: 129.2247, level: 7 };
+  }
+  if (text.includes("강릉") || text.includes("속초") || text.includes("양양")) {
+    return { lat: 37.7519, lng: 128.8761, level: 7 };
+  }
+  return { lat: 37.5665, lng: 126.9780, level: 7 };
+}
+
+function ensureKakaoMapsSdkLoaded(callback) {
+  const invokeCallback = (result) => {
+    if (typeof callback === "function") {
+      callback(result);
+    }
+    return result;
+  };
+
+  if (window.kakao && window.kakao.maps && typeof window.kakao.maps.Map === "function") {
+    kakaoSdkReady = true;
+    kakaoMapLoadFailed = false;
+    kakaoSdkLoadFailed = false;
+    return Promise.resolve(true).then(invokeCallback);
+  }
+
+  if (window.kakao && window.kakao.maps && typeof window.kakao.maps.load === "function") {
+    return new Promise((resolve) => {
+      window.kakao.maps.load(() => {
+        kakaoSdkReady = true;
+        kakaoMapLoadFailed = false;
+        kakaoSdkLoadFailed = false;
+        resolve(true);
+      });
+    }).then(invokeCallback);
+  }
+
+  if (!HAS_KAKAO_JAVASCRIPT_KEY) {
+    kakaoMapLoadFailed = true;
+    kakaoSdkLoadFailed = true;
+    return Promise.resolve(false).then(invokeCallback);
+  }
+
+  if (kakaoSdkLoadPromise) {
+    return kakaoSdkLoadPromise.then(invokeCallback);
+  }
+
+  kakaoSdkLoading = true;
+  kakaoSdkLoadPromise = new Promise((resolve) => {
+    const existingScript = document.getElementById("kakao-maps-sdk-script");
+    if (existingScript && kakaoMapLoadFailed) {
+      existingScript.remove();
+    }
+
+    const script = document.createElement("script");
+    script.id = "kakao-maps-sdk-script";
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(KAKAO_JAVASCRIPT_KEY)}&autoload=false`;
+    script.async = true;
+    script.onload = () => {
+      kakaoSdkLoading = false;
+      if (window.kakao && window.kakao.maps && typeof window.kakao.maps.load === "function") {
+        window.kakao.maps.load(() => {
+          kakaoSdkReady = true;
+          kakaoMapLoadFailed = false;
+          kakaoSdkLoadFailed = false;
+          resolve(true);
+        });
+      } else if (window.kakao && window.kakao.maps && typeof window.kakao.maps.Map === "function") {
+        kakaoSdkReady = true;
+        kakaoMapLoadFailed = false;
+        kakaoSdkLoadFailed = false;
+        resolve(true);
+      } else {
+        kakaoMapLoadFailed = true;
+        kakaoSdkLoadFailed = true;
+        kakaoSdkLoadPromise = null;
+        setTravelMapStatus(getKakaoMapLoadFailureMessage());
+        resolve(false);
+      }
+    };
+    script.onerror = () => {
+      kakaoSdkLoading = false;
+      kakaoMapLoadFailed = true;
+      kakaoSdkLoadFailed = true;
+      kakaoSdkLoadPromise = null;
+      setTravelMapStatus(getKakaoMapLoadFailureMessage());
+      resolve(false);
+    };
+    document.head.appendChild(script);
+  });
+
+  return kakaoSdkLoadPromise.then(invokeCallback);
+}
+
+function syncDomesticInternationalUI() {
+  const isDomestic = isDomesticTrip();
+
+  const toolScopeSelect = document.querySelector('#place-search-form select[name="scope"]');
+  const toolQueryInput = document.querySelector('#place-search-form input[name="query"]');
+  const itemScopeSelect = document.getElementById("item-place-search-scope");
+  const itemQueryInput = document.getElementById("item-place-search-query");
+
+  const defaultScope = isDomestic ? "domestic" : "international";
+  const placeholderText = isDomestic ? "예: 성수동 카페, 제주 흑돼지, 해운대 맛집" : "예: 도쿄 스시, 오사카 우메다 카페";
+
+  if (toolScopeSelect) toolScopeSelect.value = defaultScope;
+  if (toolQueryInput) toolQueryInput.placeholder = placeholderText;
+  if (itemScopeSelect) itemScopeSelect.value = defaultScope;
+  if (itemQueryInput) itemQueryInput.placeholder = placeholderText;
+
+  const timezoneBadge = document.querySelector(".trip-header-timezone");
+  let domesticBadge = document.getElementById("trip-header-domestic-badge");
+  if (isDomestic) {
+    if (!domesticBadge && timezoneBadge) {
+      domesticBadge = document.createElement("span");
+      domesticBadge.id = "trip-header-domestic-badge";
+      domesticBadge.className = "badge";
+      domesticBadge.style.marginLeft = "0.4rem";
+      domesticBadge.style.backgroundColor = "#fee500";
+      domesticBadge.style.color = "#191919";
+      domesticBadge.style.fontWeight = "bold";
+      domesticBadge.textContent = "국내 여행 · Kakao 지도/검색 우선";
+      timezoneBadge.after(domesticBadge);
+    } else if (domesticBadge) {
+      domesticBadge.style.display = "inline-block";
+    }
+  } else if (domesticBadge) {
+    domesticBadge.style.display = "none";
+  }
+
+  const aiDraftHeader = document.querySelector("#ai-draft-accordion-content .section-header");
+  if (aiDraftHeader) {
+    const h2 = aiDraftHeader.querySelector("h2");
+    const p = aiDraftHeader.querySelector("p");
+    if (h2) {
+      h2.textContent = isDomestic ? "국내 AI 여행 코스 초안" : "해외 AI 여행 코스 초안";
+    }
+    if (p) {
+      p.textContent = isDomestic
+        ? "여행 스타일과 관심사를 바탕으로 Kakao Local 실제 장소 후보 안에서 날짜별 코스 초안을 구성합니다."
+        : "여행 스타일과 관심사를 바탕으로 Google Places 실제 후보 안에서만 날짜별 코스 초안을 구성합니다.";
+    }
+  }
+
+  refreshTravelMap();
 }
 
 function normalizeSavedCandidatesText(value) {
@@ -2347,6 +2555,27 @@ function ensureTravelMapInstance() {
   travelMapInfoWindow = new google.maps.InfoWindow();
 }
 
+function getMapLinkInfo(url, provider) {
+  const rawUrl = String(url || "").trim();
+  const prov = String(provider || "").toLowerCase();
+  let label = "Google 지도 보기";
+  if (prov === "kakao" || rawUrl.includes("kakao.com") || rawUrl.includes("kko.to")) {
+    label = "카카오맵 보기";
+  } else if (prov === "naver" || rawUrl.includes("naver.com") || rawUrl.includes("naver.me")) {
+    label = "네이버지도 보기";
+  }
+  return { label, url: rawUrl };
+}
+
+function buildKakaoRouteLinkHtml(name, latitude, longitude) {
+  if (!isDomesticTrip() || !Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) {
+    return "";
+  }
+  const targetName = encodeURIComponent(name || "도착지");
+  const routeUrl = `https://map.kakao.com/link/to/${targetName},${Number(latitude)},${Number(longitude)}`;
+  return `<p style="margin: 0 0 0.35rem;"><a href="${routeUrl}" target="_blank" rel="noopener noreferrer" style="color: #3182f6; font-weight: bold;">카카오맵 길찾기 ↗</a></p>`;
+}
+
 function buildSavedCandidateInfoWindowContent(candidate, canEdit) {
   const name = escapeHtml(candidate.name || "이름 없음");
   const address = candidate.address ? escapeHtml(candidate.address) : "주소 정보 없음";
@@ -2357,6 +2586,8 @@ function buildSavedCandidateInfoWindowContent(candidate, canEdit) {
   const numericId = Number(candidate.id);
   const hasNumericId = Number.isInteger(numericId);
   const addButtonId = hasNumericId ? `saved-candidate-add-${numericId}` : "";
+  const mapLinkInfo = getMapLinkInfo(candidate.map_url, candidate.provider);
+  const routeLinkHtml = buildKakaoRouteLinkHtml(candidate.name, candidate.latitude, candidate.longitude);
 
   const addButtonHtml = canEdit && addButtonId
     ? `
@@ -2382,11 +2613,12 @@ function buildSavedCandidateInfoWindowContent(candidate, canEdit) {
         ${hasMapUrl
           ? `
             <p style="margin: 0 0 0.35rem;">
-              <a href="${mapUrl}" target="_blank" rel="noopener noreferrer">Google 지도 보기</a>
+              <a href="${mapUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(mapLinkInfo.label)}</a>
             </p>
           `
           : ""
         }
+        ${routeLinkHtml}
         ${addButtonHtml}
       </div>
     `,
@@ -2409,6 +2641,8 @@ function buildItineraryInfoWindowContent(item) {
 
   const mapUrlMatch = item.memo?.match(/^지도:\s*(https?:\/\/\S+)$/m);
   const mapUrl = mapUrlMatch ? mapUrlMatch[1] : "";
+  const mapLinkInfo = getMapLinkInfo(mapUrl, item.place_provider);
+  const routeLinkHtml = buildKakaoRouteLinkHtml(item.location_name || item.title, item.latitude, item.longitude);
 
   const titleHtml = mapUrl
     ? `<a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${title}</a>`
@@ -2421,7 +2655,9 @@ function buildItineraryInfoWindowContent(item) {
       <p style="margin: 0 0 0.25rem;">시작: ${startText}</p>
       <p style="margin: 0 0 0.25rem;">종료: ${endText}</p>
       <p style="margin: 0 0 0.25rem;">장소: ${locationName}</p>
-      ${memo ? `<p style="margin: 0;">메모: ${memo}</p>` : ""}
+      ${memo ? `<p style="margin: 0 0 0.25rem;">메모: ${memo}</p>` : ""}
+      ${mapUrl ? `<p style="margin: 0 0 0.25rem;"><a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(mapLinkInfo.label)}</a></p>` : ""}
+      ${routeLinkHtml}
     </div>
   `;
 }
@@ -2433,6 +2669,8 @@ function buildAiDraftInfoWindowContent(place) {
   const stay = Number.isFinite(Number(place.suggested_stay_minutes))
     ? `${escapeHtml(String(place.suggested_stay_minutes))}분`
     : "정보 없음";
+  const mapLinkInfo = getMapLinkInfo(place.map_url, place.provider);
+  const routeLinkHtml = buildKakaoRouteLinkHtml(place.name, place.latitude, place.longitude);
   const mapLink = place.map_url
     ? `
       <a
@@ -2440,7 +2678,7 @@ function buildAiDraftInfoWindowContent(place) {
         target="_blank"
         rel="noopener noreferrer"
       >
-        Google 지도 보기
+        ${escapeHtml(mapLinkInfo.label)}
       </a>
     `
     : "";
@@ -2452,6 +2690,7 @@ function buildAiDraftInfoWindowContent(place) {
       <p style="margin: 0 0 0.25rem;">추천 이유: ${reason}</p>
       <p style="margin: 0 0 0.35rem;">권장 체류: ${stay}</p>
       ${mapLink}
+      ${routeLinkHtml}
     </div>
   `;
 }
@@ -2588,6 +2827,9 @@ function setTravelMapTab(tabName) {
   updateTravelMapControlsVisibility();
   updateItineraryRouteButtonVisibility();
   refreshTravelMap();
+  if (kakaoMap && typeof kakaoMap.relayout === "function") {
+    kakaoMap.relayout();
+  }
 }
 
 function pulseItineraryMarker(marker) {
@@ -2605,7 +2847,7 @@ function pulseItineraryMarker(marker) {
 }
 
 function focusItineraryMarker(itemId) {
-  if (activeTravelMapTab !== "itineraries" || !travelMap || !travelMapInfoWindow || !window.google?.maps) {
+  if (activeTravelMapTab !== "itineraries") {
     return;
   }
 
@@ -2615,7 +2857,23 @@ function focusItineraryMarker(itemId) {
   }
 
   const entry = itineraryMarkerById.get(Number(itemId));
-  if (!entry || !entry.marker.getMap()) {
+  if (!entry) {
+    return;
+  }
+
+  const provider = getActiveMapProvider();
+  if (provider === "kakao" && entry.isKakao && kakaoMap && kakaoInfoWindow) {
+    kakaoMap.panTo(entry.marker.getPosition());
+    const wrappedContent = `<div style="padding: 10px; font-size: 13px; color: #111; max-width: 280px; line-height: 1.45;">${entry.content}</div>`;
+    kakaoInfoWindow.setContent(wrappedContent);
+    kakaoInfoWindow.open(kakaoMap, entry.marker);
+    return;
+  }
+
+  if (!travelMap || !travelMapInfoWindow || !window.google?.maps) {
+    return;
+  }
+  if (!entry.marker.getMap()) {
     return;
   }
 
@@ -2691,31 +2949,262 @@ function focusItineraryCard(itemId, { scroll = true } = {}) {
   itineraryCardHighlightTimer = setTimeout(() => card.classList.remove("is-map-focused"), 1800);
 }
 
+function renderKakaoTravelMap(mapEl) {
+  if (kakaoMapLoadFailed) {
+    setTravelMapStatus(getKakaoMapLoadFailureMessage());
+    return;
+  }
+
+  if (!window.kakao || !window.kakao.maps || typeof window.kakao.maps.Map !== "function") {
+    setTravelMapStatus("카카오 지도를 불러오는 중입니다...");
+    ensureKakaoMapsSdkLoaded().then((loaded) => {
+      if (loaded) {
+        refreshTravelMap();
+      }
+    });
+    return;
+  }
+
+  if (currentMapEngine !== "kakao") {
+    mapEl.innerHTML = "";
+    travelMap = null;
+    kakaoMap = null;
+    currentMapEngine = "kakao";
+  }
+
+  mapEl.style.display = "block";
+  if (!mapEl.style.minHeight) {
+    mapEl.style.minHeight = "420px";
+  }
+
+  const defaultCenter = getDefaultDomesticCenter();
+  if (!kakaoMap) {
+    kakaoMap = new kakao.maps.Map(mapEl, {
+      center: new kakao.maps.LatLng(37.5665, 126.9780),
+      level: 7,
+    });
+    kakaoInfoWindow = new kakao.maps.InfoWindow({ removable: true });
+    kakaoMap.relayout();
+  } else {
+    kakaoMap.relayout();
+  }
+
+  updateTravelMapControlsVisibility();
+  clearKakaoMapMarkers();
+
+  if (activeTravelMapTab === "ai") {
+    if (!currentAiItineraryDraft || !Array.isArray(currentAiItineraryDraft.days) || currentAiItineraryDraft.days.length === 0) {
+      kakaoMap.setCenter(new kakao.maps.LatLng(defaultCenter.lat, defaultCenter.lng));
+      kakaoMap.setLevel(defaultCenter.level);
+      kakaoMap.relayout();
+      setTravelMapStatus("먼저 AI 코스를 생성하세요.");
+      return;
+    }
+  }
+
+  let points = [];
+  if (activeTravelMapTab === "itineraries") {
+    const selectedDate = document.getElementById("travel-map-itinerary-date")?.value || "all";
+    points = [...currentItineraries]
+      .sort((a, b) => {
+        if (selectedDate === "all") return 0;
+        const aTime = a?.start_at ? new Date(a.start_at).getTime() : NaN;
+        const bTime = b?.start_at ? new Date(b.start_at).getTime() : NaN;
+        const aValid = Number.isFinite(aTime);
+        const bValid = Number.isFinite(bTime);
+        if (aValid && bValid && aTime !== bTime) return aTime - bTime;
+        if (aValid !== bValid) return aValid ? -1 : 1;
+        return Number(a?.id || 0) - Number(b?.id || 0);
+      })
+      .filter((item) => Number.isFinite(item?.latitude) && Number.isFinite(item?.longitude))
+      .filter((item) => {
+        if (selectedDate === "all") return true;
+        if (!item.start_at) return false;
+        return getTripDateKey(item.start_at) === selectedDate;
+      })
+      .map((item, index) => ({
+        itemId: item.id,
+        latitude: Number(item.latitude),
+        longitude: Number(item.longitude),
+        title: item.title || "일정",
+        content: buildItineraryInfoWindowContent(item),
+        sequenceNumber: selectedDate === "all" ? undefined : index + 1,
+      }));
+  } else if (activeTravelMapTab === "candidates") {
+    const selectedFilter = document.getElementById("saved-candidates-map-filter")?.value || "all";
+    const filteredCandidates = currentPlaceCandidates
+      .filter((candidate) => {
+        if (selectedFilter === "all") return true;
+        return getSavedCandidateFilterGroup(candidate) === selectedFilter;
+      })
+      .filter((candidate) => Number.isFinite(candidate?.latitude) && Number.isFinite(candidate?.longitude));
+
+    const canEdit = canEditPlaces();
+    points = filteredCandidates.map((candidate) => ({
+      latitude: Number(candidate.latitude),
+      longitude: Number(candidate.longitude),
+      title: candidate.name || "장소 후보",
+      infoFactory: () => buildSavedCandidateInfoWindowContent(candidate, canEdit),
+      place: candidate,
+    }));
+  } else if (activeTravelMapTab === "ai") {
+    const selectedDate = document.getElementById("ai-itinerary-map-date")?.value;
+    const selectedDay = (currentAiItineraryDraft?.days || []).find((day) => day.date === selectedDate);
+    const dayItems = Array.isArray(selectedDay?.items) ? selectedDay.items : [];
+    points = dayItems
+      .filter((item) => Number.isFinite(item?.latitude) && Number.isFinite(item?.longitude))
+      .map((item) => ({
+        latitude: Number(item.latitude),
+        longitude: Number(item.longitude),
+        title: item.name || "AI 추천 장소",
+        content: buildAiDraftInfoWindowContent(item),
+      }));
+  }
+
+  if (points.length === 0) {
+    kakaoMap.setCenter(new kakao.maps.LatLng(defaultCenter.lat, defaultCenter.lng));
+    kakaoMap.setLevel(defaultCenter.level);
+    kakaoMap.relayout();
+    setTravelMapStatus("선택한 날짜에 표시할 좌표 장소가 없습니다. 일정에 장소를 검색해 연결하면 마커가 표시됩니다.");
+    return;
+  }
+
+  setTravelMapStatus("");
+
+  const bounds = new kakao.maps.LatLngBounds();
+
+  for (const point of points) {
+    const latLng = new kakao.maps.LatLng(Number(point.latitude), Number(point.longitude));
+    bounds.extend(latLng);
+
+    const marker = new kakao.maps.Marker({
+      position: latLng,
+      map: kakaoMap,
+      title: point.title,
+    });
+
+    kakao.maps.event.addListener(marker, "click", () => {
+      if (!kakaoInfoWindow) return;
+
+      let contentStr = "";
+      let addButtonId = "";
+      if (typeof point.infoFactory === "function") {
+        const info = point.infoFactory();
+        contentStr = info.content;
+        addButtonId = info.addButtonId;
+      } else {
+        contentStr = point.content || "";
+      }
+
+      const wrappedContent = `<div style="padding: 10px; font-size: 13px; color: #111; max-width: 280px; line-height: 1.45;">${contentStr}</div>`;
+      kakaoInfoWindow.setContent(wrappedContent);
+      kakaoInfoWindow.open(kakaoMap, marker);
+
+      if (addButtonId) {
+        setTimeout(() => {
+          const btn = document.getElementById(addButtonId);
+          if (btn) {
+            btn.onclick = () => {
+              kakaoInfoWindow.close();
+              openItineraryFormFromPlace(point.place);
+            };
+          }
+        }, 50);
+      }
+
+      if (point.itemId !== undefined) {
+        lastItineraryMarkerClickAt = Date.now();
+        if (window.matchMedia("(max-width: 760px)").matches) {
+          showMobileItineraryDetail(point.itemId);
+        } else {
+          focusItineraryCard(point.itemId, { scroll: true });
+        }
+      }
+    });
+
+    if (point.itemId !== undefined) {
+      itineraryMarkerById.set(Number(point.itemId), { marker, content: point.content || "", isKakao: true });
+    }
+
+    kakaoMarkers.push(marker);
+  }
+
+  if (points.length === 1) {
+    kakaoMap.setCenter(new kakao.maps.LatLng(Number(points[0].latitude), Number(points[0].longitude)));
+    kakaoMap.setLevel(5);
+  } else {
+    kakaoMap.setBounds(bounds);
+  }
+  kakaoMap.relayout();
+}
+
 function refreshTravelMap() {
   const mapEl = document.getElementById("travel-map");
   if (!mapEl) {
     return;
   }
 
-  if (!HAS_GOOGLE_MAPS_BROWSER_API_KEY) {
-    mapEl.style.display = "none";
-    clearTravelMapState();
-    setTravelMapStatus("지도 표시는 현재 설정되어 있지 않습니다.");
+  if (currentTrip?.timezone === "Asia/Seoul" && HAS_KAKAO_JAVASCRIPT_KEY) {
+    if (kakaoMapLoadFailed) {
+      setTravelMapStatus(getKakaoMapLoadFailureMessage());
+      return;
+    }
+    if (!window.kakao || !window.kakao.maps || typeof window.kakao.maps.Map !== "function") {
+      setTravelMapStatus("카카오 지도를 불러오는 중입니다...");
+      ensureKakaoMapsSdkLoaded().then((loaded) => {
+        if (loaded) {
+          refreshTravelMap();
+        }
+      });
+      return;
+    }
+    renderKakaoTravelMap(mapEl);
     return;
   }
 
-  if (travelMapLoadFailed) {
-    mapEl.style.display = "none";
-    clearTravelMapState();
-    setTravelMapStatus("지도를 불러오지 못했습니다. API 설정을 확인하세요.");
+  const provider = getActiveMapProvider();
+  if (provider === "kakao") {
+    renderKakaoTravelMap(mapEl);
     return;
   }
 
-  if (!travelMapReady || !window.google?.maps) {
-    mapEl.style.display = "none";
-    clearTravelMapState();
-    setTravelMapStatus("");
-    return;
+  if (isDomesticTrip()) {
+    if (provider === "google") {
+      setTravelMapStatus("국내 여행 지도를 카카오맵으로 보려면 .env에 KAKAO_JAVASCRIPT_KEY를 등록하세요. (현재 Google 지도로 표시 중)");
+    } else {
+      mapEl.style.display = "none";
+      clearTravelMapState();
+      setTravelMapStatus("국내 여행 지도를 표시하려면 .env에 KAKAO_JAVASCRIPT_KEY를 설정하세요.");
+      return;
+    }
+  } else {
+    if (!HAS_GOOGLE_MAPS_BROWSER_API_KEY) {
+      mapEl.style.display = "none";
+      clearTravelMapState();
+      setTravelMapStatus("지도 표시는 현재 설정되어 있지 않습니다.");
+      return;
+    }
+
+    if (travelMapLoadFailed) {
+      mapEl.style.display = "none";
+      clearTravelMapState();
+      setTravelMapStatus("지도를 불러오지 못했습니다. API 설정을 확인하세요.");
+      return;
+    }
+
+    if (!travelMapReady || !window.google?.maps) {
+      mapEl.style.display = "none";
+      clearTravelMapState();
+      setTravelMapStatus("");
+      return;
+    }
+  }
+
+  if (currentMapEngine !== "google") {
+    mapEl.innerHTML = "";
+    travelMap = null;
+    kakaoMap = null;
+    currentMapEngine = "google";
   }
 
   mapEl.style.display = "block";
@@ -2757,11 +3246,10 @@ function refreshTravelMap() {
       })
       .filter((item) => Number.isFinite(item?.latitude) && Number.isFinite(item?.longitude))
       .filter((item) => {
-  if (selectedDate === "all") return true;
-  if (!item.start_at) return false;
-
-  return getTripDateKey(item.start_at) === selectedDate;
-})
+        if (selectedDate === "all") return true;
+        if (!item.start_at) return false;
+        return getTripDateKey(item.start_at) === selectedDate;
+      })
       .map((item, index) => ({
         itemId: item.id,
         latitude: Number(item.latitude),
@@ -2913,7 +3401,9 @@ function refreshAiItineraryMap() {
 window.initAiItineraryMap = function initAiItineraryMap() {
   travelMapLoadFailed = false;
   travelMapReady = Boolean(window.google?.maps);
-  refreshAiItineraryMap();
+  if (currentTrip) {
+    refreshAiItineraryMap();
+  }
 };
 
 window.handleAiItineraryMapLoadError = function handleAiItineraryMapLoadError() {
@@ -4963,9 +5453,16 @@ function setMobileMainTab(tabName) {
   scheduleBtn.classList.toggle("is-active", isSchedule);
   mapBtn.classList.toggle("is-active", !isSchedule);
 
-  if (!isSchedule && travelMap && window.google?.maps) {
-    google.maps.event.trigger(travelMap, "resize");
-    refreshTravelMap();
+  if (!isSchedule) {
+    if (kakaoMap) {
+      kakaoMap.relayout();
+      refreshTravelMap();
+    } else if (travelMap && window.google?.maps) {
+      google.maps.event.trigger(travelMap, "resize");
+      refreshTravelMap();
+    } else {
+      refreshTravelMap();
+    }
   }
 }
 
@@ -5929,54 +6426,165 @@ let externalLlmAnalysisItems = [];
 let externalLlmAnalyzedRawJson = "";
 
 function extractJsonObjectFromLlmText(rawText) {
-  const cleanSource = (input) =>
-    String(input || "")
+  const escapeLiteralControlCharsInStrings = (input) => {
+    let result = "";
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < input.length; i += 1) {
+      const ch = input[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          result += ch;
+        } else if (ch === "\\") {
+          escaped = true;
+          result += ch;
+        } else if (ch === '"') {
+          inString = false;
+          result += ch;
+        } else if (ch === "\n") {
+          result += "\\n";
+        } else if (ch === "\r") {
+          result += "\\r";
+        } else if (ch === "\t") {
+          result += "\\t";
+        } else {
+          result += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inString = true;
+        }
+        result += ch;
+      }
+    }
+    return result;
+  };
+
+  const cleanSource = (input, { replaceSmartQuotes = true } = {}) => {
+    let cleaned = String(input || "")
+      .replace(/\\([_\[\]{}])/g, "$1")
+      .replace(/\r\n?/g, "\n")
       .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\u00A0/g, " ");
+    if (replaceSmartQuotes) {
+      cleaned = cleaned
+        .replace(/[\u201C\u201D\u201E\u2033]/g, '"')
+        .replace(/[\u2018\u2019]/g, "'");
+    }
+    return cleaned
       .trim()
       .replace(/\n\s*(?:Citations|출처|References)\s*:\s*[\s\S]*$/i, "")
       .trim()
+      .replace(/【\d+(?::\d+)?†(?:source|출처)】/g, "")
       .replace(/([\}\]])\s*(?:\[\d+\])+/g, "$1")
       .replace(/"\s*(?:\[\d+\])+\s*(?=[,\}\]:])/g, '"')
-      .replace(/(?:\[\d+\])+\s*([,\}\]])/g, "$1");
+      .replace(/(?:\[\d+\])+\s*([,\}\]])/g, "$1")
+      .replace(/,\s*([\}\]])/g, "$1")
+      .trim();
+  };
 
-  const content = cleanSource(rawText);
-  if (!content) {
+  const stripOuterCodeFence = (input) => {
+    const trimmed = String(input || "").trim();
+    const fullFenceMatch = /^```(?:json|jsonc|javascript|js|ts|plaintext|text)?\b[ \t]*\r?\n?([\s\S]*?)\r?\n?```$/is.exec(trimmed);
+    if (fullFenceMatch && !fullFenceMatch[1].includes("```")) {
+      return fullFenceMatch[1].trim();
+    }
+    if (/^```(?:json|jsonc|javascript|js|ts|plaintext|text)?\b/i.test(trimmed) && !trimmed.slice(3).includes("```")) {
+      return trimmed.replace(/^```(?:json|jsonc|javascript|js|ts|plaintext|text)?\b[ \t]*\r?\n?/i, "").trim();
+    }
+    if (trimmed.endsWith("```") && !trimmed.slice(0, -3).includes("```")) {
+      return trimmed.slice(0, -3).trim();
+    }
+    return trimmed;
+  };
+
+  // 마크다운 이스케이프 문자(\_, \[, \], \{, \}) 복구
+  let cleanedText = String(rawText || "").replace(/\\([_\[\]{}])/g, "$1");
+  const rawTrimmed = cleanedText.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+  if (!rawTrimmed) {
     throw new Error("EMPTY_INPUT");
   }
 
   const isPlainObject = (val) => Boolean(val && typeof val === "object" && !Array.isArray(val));
   const isPreferredObject = (val) =>
-    isPlainObject(val) && ("items" in val || "kind" in val || "title" in val);
+    isPlainObject(val) &&
+    ("items" in val ||
+      "kind" in val ||
+      "title" in val ||
+      "schedule" in val ||
+      "schedules" in val ||
+      "days" in val ||
+      "daily_schedule" in val ||
+      "itinerary_days" in val ||
+      "itineraries" in val ||
+      "itinerary" in val ||
+      "events" in val ||
+      "plans" in val ||
+      "plan" in val ||
+      "activities" in val);
 
-  if (content.startsWith("{") && content.endsWith("}")) {
-    try {
-      const parsed = JSON.parse(content);
-      if (isPlainObject(parsed)) {
-        return parsed;
+  const wrapIfArrayOfObjects = (parsed) => {
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((it) => isPlainObject(it))) {
+      return { version: 1, items: parsed };
+    }
+    return parsed;
+  };
+
+  const tryParseJsonObject = (candidate) => {
+    const base = stripOuterCodeFence(candidate);
+    if (!base) return null;
+    const variants = [
+      cleanSource(base, { replaceSmartQuotes: false }),
+      cleanSource(base, { replaceSmartQuotes: true }),
+      escapeLiteralControlCharsInStrings(cleanSource(base, { replaceSmartQuotes: false })),
+      escapeLiteralControlCharsInStrings(cleanSource(base, { replaceSmartQuotes: true })),
+    ];
+    for (const variant of variants) {
+      if (!variant) continue;
+      try {
+        const parsed = wrapIfArrayOfObjects(JSON.parse(variant));
+        if (isPlainObject(parsed)) {
+          return parsed;
+        }
+      } catch {
+        // try next variant
       }
-    } catch {
-      // continue to fence / balanced scan
+    }
+    return null;
+  };
+
+  // 1. 양끝 마크다운 코드블록(```json ... ```) 제거 후 전체 문자열 직접 파싱 시도
+  const strippedOuter = stripOuterCodeFence(rawTrimmed);
+  const cleanedOuter = cleanSource(strippedOuter);
+  if (!cleanedOuter) {
+    throw new Error("EMPTY_INPUT");
+  }
+
+  if (
+    (cleanedOuter.startsWith("{") && cleanedOuter.endsWith("}")) ||
+    (cleanedOuter.startsWith("[") && cleanedOuter.endsWith("]"))
+  ) {
+    const directParsed = tryParseJsonObject(strippedOuter);
+    if (directParsed) {
+      return directParsed;
     }
   }
 
+  // 2. 마크다운 코드블록(```json ... ```) 내부 다중 줄 탐색 (dotAll s 플래그 지원)
   let fallbackObj = null;
-  const fenceRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
+  const content = cleanSource(rawTrimmed);
+  const fenceRegex = /```(?:json|jsonc|javascript|js|ts|plaintext|text)?\b[ \t]*([\s\S]*?)```/gis;
   let match;
-  while ((match = fenceRegex.exec(content)) !== null) {
-    const block = cleanSource(match[1] || "");
-    if (!block) continue;
-    try {
-      const parsed = JSON.parse(block);
-      if (isPlainObject(parsed)) {
-        if (isPreferredObject(parsed)) {
-          return parsed;
-        }
-        if (!fallbackObj) {
-          fallbackObj = parsed;
-        }
+  while ((match = fenceRegex.exec(rawTrimmed)) !== null) {
+    const parsed = tryParseJsonObject(match[1] || "");
+    if (parsed) {
+      if (isPreferredObject(parsed)) {
+        return parsed;
       }
-    } catch {
-      // ignore invalid fence block
+      if (!fallbackObj) {
+        fallbackObj = parsed;
+      }
     }
   }
 
@@ -5984,11 +6592,21 @@ function extractJsonObjectFromLlmText(rawText) {
     return fallbackObj;
   }
 
+  // 3. 텍스트 중간에 포함된 다중 줄 balanced JSON 객체({ ... }) 또는 배열([ ... ]) 스캔
   let searchStart = 0;
   while (searchStart < content.length) {
-    const startIdx = content.indexOf("{", searchStart);
+    const braceIdx = content.indexOf("{", searchStart);
+    const bracketIdx = content.indexOf("[", searchStart);
+    let startIdx = -1;
+    if (braceIdx !== -1 && bracketIdx !== -1) {
+      startIdx = Math.min(braceIdx, bracketIdx);
+    } else {
+      startIdx = braceIdx !== -1 ? braceIdx : bracketIdx;
+    }
     if (startIdx === -1) break;
 
+    const openChar = content[startIdx];
+    const closeChar = openChar === "{" ? "}" : "]";
     let depth = 0;
     let inString = false;
     let escaped = false;
@@ -6009,9 +6627,9 @@ function extractJsonObjectFromLlmText(rawText) {
 
       if (ch === '"') {
         inString = true;
-      } else if (ch === "{") {
+      } else if (ch === openChar) {
         depth += 1;
-      } else if (ch === "}") {
+      } else if (ch === closeChar) {
         depth -= 1;
         if (depth === 0) {
           matchedEnd = i + 1;
@@ -6021,21 +6639,17 @@ function extractJsonObjectFromLlmText(rawText) {
     }
 
     if (matchedEnd !== -1) {
-      const candidateStr = cleanSource(content.slice(startIdx, matchedEnd));
-      try {
-        const parsed = JSON.parse(candidateStr);
-        if (isPlainObject(parsed)) {
-          if (isPreferredObject(parsed)) {
-            return parsed;
-          }
-          if (!fallbackObj) {
-            fallbackObj = parsed;
-          }
-          searchStart = matchedEnd;
-          continue;
+      const candidateStr = content.slice(startIdx, matchedEnd);
+      const parsed = tryParseJsonObject(candidateStr);
+      if (parsed) {
+        if (isPreferredObject(parsed)) {
+          return parsed;
         }
-      } catch {
-        // continue scanning
+        if (!fallbackObj) {
+          fallbackObj = parsed;
+        }
+        searchStart = matchedEnd;
+        continue;
       }
     }
 
@@ -6046,10 +6660,19 @@ function extractJsonObjectFromLlmText(rawText) {
     return fallbackObj;
   }
 
+  // 4. 다중 줄 정규식(s 플래그 dotAll) 기반 최외곽 { ... } 또는 [ ... ] 블록 추출 시도
+  const multilineBlockMatch = /(\{[\s\S]*\}|\[[\s\S]*\])/s.exec(strippedOuter);
+  if (multilineBlockMatch) {
+    const parsed = tryParseJsonObject(multilineBlockMatch[1]);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
   throw new Error("INVALID_JSON_OBJECT");
 }
 
-function isAllowedGoogleMapsUrl(value) {
+function isAllowedMapUrl(value) {
   if (typeof value !== "string" || !value || value !== value.trim()) {
     return false;
   }
@@ -6059,6 +6682,13 @@ function isAllowedGoogleMapsUrl(value) {
     "maps.google.com",
     "goo.gl",
     "maps.app.goo.gl",
+    "map.kakao.com",
+    "place.map.kakao.com",
+    "kko.to",
+    "m.map.kakao.com",
+    "map.naver.com",
+    "m.map.naver.com",
+    "naver.me",
   ]);
   try {
     const parsed = new URL(value);
@@ -6071,21 +6701,60 @@ function isAllowedGoogleMapsUrl(value) {
   }
 }
 
+function isAllowedGoogleMapsUrl(value) {
+  return isAllowedMapUrl(value);
+}
+
 function normalizeExternalLlmJsonForRequest(rawText) {
   const stripText = (val) =>
     String(val ?? "")
       .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\u00A0/g, " ")
+      .replace(/【\d+(?::\d+)?†(?:source|출처)】/g, "")
       .replace(/(?:\s*\[\d+\])+/g, "")
       .trim();
 
-  const normalizeTime = (val) => {
-    const cleaned = stripText(val);
-    if (!cleaned) return "";
-    const singleHourMatch = /^(\d):([0-5]\d)$/.exec(cleaned);
-    if (singleHourMatch) {
-      return `0${singleHourMatch[1]}:${singleHourMatch[2]}`;
+  const parseKoreanTime = (str) => {
+    const cleaned = stripText(str);
+    if (!cleaned) return null;
+    if (/^\d{2}:\d{2}$/.test(cleaned)) {
+      const h = parseInt(cleaned.slice(0, 2), 10);
+      const m = parseInt(cleaned.slice(3, 5), 10);
+      if (h < 24 && m < 60) return cleaned;
+      return null;
     }
-    return cleaned;
+    const singleHour = /^(\d):([0-5]\d)$/.exec(cleaned);
+    if (singleHour) {
+      return `0${singleHour[1]}:${singleHour[2]}`;
+    }
+    const secMatch = /^(\d{1,2}):([0-5]\d):[0-5]\d$/.exec(cleaned);
+    if (secMatch) {
+      const h = parseInt(secMatch[1], 10);
+      if (h < 24) return `${String(h).padStart(2, "0")}:${secMatch[2]}`;
+    }
+    const pmMatch = /(?:오후|pm)\s*(\d{1,2})(?::([0-5]\d)|시(?:\s*([0-5]\d)분?)?)?/i.exec(cleaned);
+    if (pmMatch) {
+      let h = parseInt(pmMatch[1], 10);
+      const m = parseInt(pmMatch[2] || pmMatch[3] || "0", 10);
+      if (h < 12) h += 12;
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+    const amMatch = /(?:오전|am)\s*(\d{1,2})(?::([0-5]\d)|시(?:\s*([0-5]\d)분?)?)?/i.exec(cleaned);
+    if (amMatch) {
+      let h = parseInt(amMatch[1], 10);
+      const m = parseInt(amMatch[2] || amMatch[3] || "0", 10);
+      if (h === 12) h = 0;
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+    const korHourMatch = /^(\d{1,2})시(?:\s*([0-5]\d)분?)?$/.exec(cleaned);
+    if (korHourMatch) {
+      const h = parseInt(korHourMatch[1], 10);
+      const m = parseInt(korHourMatch[2] || "0", 10);
+      if (h < 24 && m < 60) {
+        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      }
+    }
+    return null;
   };
 
   let extracted;
@@ -6095,38 +6764,216 @@ function normalizeExternalLlmJsonForRequest(rawText) {
     return String(rawText || "").replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
   }
 
-  if (!extracted || typeof extracted !== "object" || !Array.isArray(extracted.items)) {
+  if (!extracted || typeof extracted !== "object") {
+    return String(rawText || "").trim();
+  }
+
+  let rawItems = extracted.items;
+  if (!Array.isArray(rawItems)) {
+    for (const altKey of ["itineraries", "itinerary", "schedule", "schedules", "events", "plans", "plan", "data", "activities"]) {
+      if (Array.isArray(extracted[altKey])) {
+        rawItems = extracted[altKey];
+        break;
+      }
+    }
+  }
+
+  if (!Array.isArray(rawItems)) {
+    for (const daysKey of ["days", "daily_schedule", "itinerary_days"]) {
+      if (Array.isArray(extracted[daysKey])) {
+        const flattened = [];
+        for (const dayGroup of extracted[daysKey]) {
+          if (!dayGroup || typeof dayGroup !== "object") continue;
+          const dayDate = dayGroup.date || dayGroup.day || dayGroup.day_date;
+          let subItems = null;
+          for (const subKey of ["items", "activities", "schedule", "places", "plans", "events"]) {
+            if (Array.isArray(dayGroup[subKey])) {
+              subItems = dayGroup[subKey];
+              break;
+            }
+          }
+          if (subItems) {
+            for (const subItem of subItems) {
+              if (subItem && typeof subItem === "object") {
+                if (!subItem.date && dayDate) {
+                  subItem.date = dayDate;
+                }
+                flattened.push(subItem);
+              }
+            }
+          }
+        }
+        rawItems = flattened;
+        break;
+      }
+    }
+  }
+
+  if (!Array.isArray(rawItems)) {
     return JSON.stringify(extracted);
   }
 
-  const normalizedItems = extracted.items.map((rawItem) => {
+  const prevTimeByDate = {};
+  const normalizedItems = rawItems.map((rawItem) => {
     if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
       return rawItem;
     }
-    const dateVal = stripText(rawItem.date);
-    const startTimeVal = normalizeTime(rawItem.start_time);
-    const endTimeVal = normalizeTime(rawItem.end_time);
-    const titleVal = stripText(rawItem.title).slice(0, 120);
-    const memoVal = stripText(rawItem.memo).slice(0, 2000);
-    const placeNameVal = stripText(rawItem.place_name).slice(0, 200);
+    const item = { ...rawItem };
 
-    let candidateUrl = stripText(rawItem.place_url);
-    if (candidateUrl.startsWith("https://") && /\s/.test(candidateUrl)) {
-      candidateUrl = candidateUrl.replace(/\s+/g, "%20");
+    // date
+    let rawDate = null;
+    for (const k of ["date", "day_date", "travel_date", "start_date"]) {
+      if (item[k] !== undefined && item[k] !== null) {
+        rawDate = String(item[k]).trim();
+        delete item[k];
+        break;
+      }
     }
-    const placeUrlVal = isAllowedGoogleMapsUrl(candidateUrl) ? candidateUrl : "";
+    if (rawDate) {
+      rawDate = stripText(rawDate);
+      const dotSlash = /^(\d{4})[./](\d{1,2})[./](\d{1,2})$/.exec(rawDate);
+      if (dotSlash) {
+        rawDate = `${dotSlash[1].padStart(4, "0")}-${dotSlash[2].padStart(2, "0")}-${dotSlash[3].padStart(2, "0")}`;
+      } else {
+        const dayMatch = /(?:day\s*|)(\d+)\s*(?:일차|일)?/i.exec(rawDate);
+        if (dayMatch && !/^\d{4}-\d{2}-\d{2}$/.test(rawDate) && typeof currentTrip !== "undefined" && currentTrip?.start_date) {
+          const dayNum = parseInt(dayMatch[1], 10);
+          if (dayNum >= 1) {
+            try {
+              const d = new Date(currentTrip.start_date);
+              d.setDate(d.getDate() + (dayNum - 1));
+              rawDate = d.toISOString().slice(0, 10);
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    }
 
-    const itemObj = {
-      date: dateVal,
-      start_time: startTimeVal,
-      title: titleVal,
-      memo: memoVal,
-      place_name: placeNameVal,
-      place_url: placeUrlVal,
-    };
-    if (endTimeVal) {
-      itemObj.end_time = endTimeVal;
+    // title
+    let rawTitle = null;
+    for (const k of ["title", "name", "activity", "event", "summary"]) {
+      if (item[k] !== undefined && item[k] !== null) {
+        rawTitle = String(item[k]).trim();
+        delete item[k];
+        break;
+      }
     }
+    if (rawTitle === null && item.place_name && !item.location) {
+      rawTitle = String(item.place_name).trim();
+    } else if (rawTitle === null && item.location && !item.place_name) {
+      rawTitle = String(item.location).trim();
+    }
+    if (rawTitle !== null) {
+      rawTitle = stripText(rawTitle).slice(0, 120);
+    }
+
+    // time
+    let rawStart = null;
+    for (const k of ["start_time", "startTime", "time", "start", "begin_time"]) {
+      if (item[k] !== undefined && item[k] !== null) {
+        rawStart = String(item[k]).trim();
+        delete item[k];
+        break;
+      }
+    }
+    let rawEnd = null;
+    for (const k of ["end_time", "endTime", "end", "finish_time"]) {
+      if (item[k] !== undefined && item[k] !== null) {
+        rawEnd = String(item[k]).trim();
+        delete item[k];
+        break;
+      }
+    }
+
+    if (rawStart && !rawEnd) {
+      const rangeMatch = /^(.*?)(?:\s*[-~–—]\s*|\s+to\s+)(.*)$/i.exec(rawStart);
+      if (rangeMatch) {
+        rawStart = rangeMatch[1].trim();
+        rawEnd = rangeMatch[2].trim();
+      }
+    }
+
+    let parsedStart = rawStart ? parseKoreanTime(rawStart) : null;
+    let parsedEnd = rawEnd ? parseKoreanTime(rawEnd) : null;
+
+    const dateKey = rawDate || "";
+    if (rawStart === null) {
+      const prev = prevTimeByDate[dateKey];
+      if (!prev) {
+        parsedStart = "09:00";
+      } else {
+        const h = parseInt(prev.slice(0, 2), 10) + 1;
+        parsedStart = h < 24 ? `${String(h).padStart(2, "0")}:${prev.slice(3, 5)}` : "09:00";
+      }
+    }
+
+    if (parsedStart && parsedEnd && parsedEnd <= parsedStart) {
+      parsedEnd = null;
+    }
+
+    if (parsedStart) {
+      prevTimeByDate[dateKey] = parsedStart;
+    }
+
+    // memo
+    let rawMemo = null;
+    for (const k of ["memo", "description", "notes", "note", "detail", "details", "reason", "tip"]) {
+      if (item[k] !== undefined && item[k] !== null) {
+        rawMemo = String(item[k]).trim();
+        delete item[k];
+        break;
+      }
+    }
+    if (rawMemo !== null) {
+      rawMemo = stripText(rawMemo).slice(0, 2000);
+    }
+
+    // place_name
+    let rawPlaceName = null;
+    for (const k of ["place_name", "placeName", "location_name", "location", "place", "spot", "address"]) {
+      if (item[k] !== undefined && item[k] !== null) {
+        rawPlaceName = String(item[k]).trim();
+        delete item[k];
+        break;
+      }
+    }
+    if (rawPlaceName !== null) {
+      rawPlaceName = stripText(rawPlaceName).slice(0, 200);
+    }
+
+    // place_url
+    let rawPlaceUrl = null;
+    for (const k of ["place_url", "placeUrl", "map_url", "mapUrl", "url", "link", "google_maps_url", "kakao_map_url"]) {
+      if (item[k] !== undefined && item[k] !== null) {
+        rawPlaceUrl = String(item[k]).trim();
+        delete item[k];
+        break;
+      }
+    }
+    let placeUrlVal = "";
+    if (rawPlaceUrl) {
+      let cand = stripText(rawPlaceUrl);
+      if (cand.startsWith("https://") && /\s/.test(cand)) {
+        cand = cand.replace(/\s+/g, "%20");
+      }
+      if (isAllowedMapUrl(cand)) {
+        placeUrlVal = cand;
+      }
+    }
+
+    const itemObj = {};
+    if (rawDate !== null) itemObj.date = rawDate;
+    itemObj.start_time = parsedStart ?? (rawStart || "09:00");
+    if (parsedEnd) {
+      itemObj.end_time = parsedEnd;
+    }
+    itemObj.title = rawTitle ?? "일정";
+    itemObj.memo = rawMemo ?? "";
+    itemObj.place_name = rawPlaceName ?? "";
+    itemObj.place_url = placeUrlVal;
+
     return itemObj;
   });
 
@@ -6164,12 +7011,21 @@ function buildExternalLlmPrompt() {
     lines.push(`사용자 추가 요청사항: ${customRequest}`);
   }
 
+  const isDomestic = typeof isDomesticTrip === "function" ? isDomesticTrip() : false;
+  const mapUrlInstruction = isDomestic
+    ? 'place_url에는 유효한 HTTPS 카카오맵(예: https://map.kakao.com/link/search/장소명), 네이버지도, 또는 Google 지도 URL을 넣고, 확실하지 않으면 빈 문자열("")로 두세요. 답변에 인용 번호([1], [2] 등)는 절대 포함하지 마세요.'
+    : 'place_url에는 유효한 HTTPS Google 지도 URL(예: https://www.google.com/maps/search/?api=1&query=장소명)을 넣고, 확실하지 않으면 빈 문자열("")로 두세요. 답변에 인용 번호([1], [2] 등)는 절대 포함하지 마세요.';
+
+  const examplePlaceUrl = isDomestic
+    ? "https://map.kakao.com/link/search/국립중앙박물관"
+    : "";
+
   lines.push(
-    "설명이나 마크다운 코드 펜스 없이 JSON 객체 하나만 반환하세요. 최상위 구조는 {\"version\":1,\"items\":[...]}이며 items는 1~30개입니다.",
-    "각 일정은 다음 키만 사용하세요: date(필수, YYYY-MM-DD), start_time(필수, 24시간 HH:MM), end_time(선택, HH:MM), title(필수, 1~120자), memo(선택, 최대 2000자), place_name(선택, 최대 200자), place_url(선택, HTTPS Google 지도 URL 또는 빈 문자열).",
+    "설명이나 마크다운 코드 펜스 없이 JSON 객체 하나만 반환하세요. 최상위 구조는 {\"version\":1,\"items\":[...]}이며 items는 여행 일정에 맞게 자유롭게(최대 200개) 구성하세요.",
+    "각 일정은 다음 키만 사용하세요: date(필수, YYYY-MM-DD), start_time(필수, 24시간 HH:MM), end_time(선택, HH:MM), title(필수, 1~120자), memo(선택, 최대 2000자), place_name(선택, 최대 200자), place_url(선택, HTTPS 지도 URL 또는 빈 문자열).",
     "date는 여행 시작일과 종료일 사이로 지정하세요. end_time은 start_time보다 늦게 지정하세요. 위 키 외에 좌표, place ID, provider 등 다른 키를 추가하지 마세요.",
-    "place_url에는 유효한 HTTPS Google 지도 URL(예: https://www.google.com/maps/search/?api=1&query=장소명)을 넣고, 확실하지 않으면 빈 문자열(\"\")로 두세요. 답변에 인용 번호([1], [2] 등)는 절대 포함하지 마세요.",
-    '형식 예시: {"version":1,"items":[{"date":"' + currentTrip.start_date + '","start_time":"09:00","end_time":"10:00","title":"박물관 방문","memo":"","place_name":"","place_url":""}]}',
+    mapUrlInstruction,
+    '형식 예시: {"version":1,"items":[{"date":"' + currentTrip.start_date + '","start_time":"09:00","end_time":"10:00","title":"박물관 방문","memo":"","place_name":"","place_url":"' + examplePlaceUrl + '"}]}',
   );
 
   return lines.join("\n");

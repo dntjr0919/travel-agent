@@ -709,3 +709,242 @@ def test_base_template_dynamic_cache_busting_versions(client):
     from app.routers.pages import get_static_version
     assert css_match.group(1) == get_static_version("static/css/app.css")
     assert js_match.group(1) == get_static_version("static/js/app.js")
+
+
+def test_trip_detail_renders_kakao_javascript_key_when_configured(client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "kakao_javascript_key", "test_kakao_js_key_12345")
+
+    register_and_login(client, "pages-kakao-key@example.com")
+    trip = create_trip(client, timezone="Asia/Seoul")
+
+    res = client.get(f"/trips/{trip['id']}")
+    assert res.status_code == 200
+    assert "const HAS_KAKAO_JAVASCRIPT_KEY = true;" in res.text
+    assert 'const KAKAO_JAVASCRIPT_KEY = "test_kakao_js_key_12345";' in res.text
+
+
+def test_trip_detail_contains_kakao_and_dual_engine_scripts(client):
+    register_and_login(client, "pages-kakao-dual@example.com")
+    trip = create_trip(client, timezone="Asia/Seoul")
+
+    res = client.get(f"/trips/{trip['id']}")
+    assert res.status_code == 200
+    assert "function isDomesticTrip(" in res.text
+    assert "function getActiveMapProvider(" in res.text
+    assert "function ensureKakaoMapsSdkLoaded(" in res.text
+    assert "function renderKakaoTravelMap(" in res.text
+    assert "function clearKakaoMapMarkers(" in res.text
+    assert "function syncDomesticInternationalUI(" in res.text
+    assert "function buildKakaoRouteLinkHtml(" in res.text
+    assert "kakao.maps.load(" in res.text
+    assert "https://map.kakao.com/link/to/" in res.text
+
+
+def test_frontend_normalize_external_llm_json_handles_kakao_naver_and_days_flattening():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the inline JSON normalizer helper")
+
+    template_path = Path(__file__).parents[1] / "app" / "templates" / "trip_detail.html"
+    template = template_path.read_text(encoding="utf-8")
+    helper_start = template.index("function extractJsonObjectFromLlmText(")
+    helper_end = template.index("\nfunction setExternalLlmFeedback(", helper_start)
+    helper_source = template[helper_start:helper_end]
+
+    raw_input = (
+        '{"days": ['
+        '  {"day": "2026-11-05", "schedule": ['
+        '    {"activity": "성수동 카페거리", "time": "오후 2:30", "location": "대림창고", "link": "https://map.kakao.com/link/search/대림창고"},'
+        '    {"activity": "남산타워 야경", "time": "19:00 - 21:00", "spot": "N서울타워", "url": "https://map.naver.com/p/entry/place/12345"}'
+        '  ]}'
+        ']}'
+    )
+    script = f"""
+{helper_source}
+const raw = {json.dumps(raw_input, ensure_ascii=False)};
+process.stdout.write(normalizeExternalLlmJsonForRequest(raw));
+"""
+    result = subprocess.run(
+        [node, "--input-type=commonjs", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    normalized_doc = json.loads(result.stdout)
+    assert len(normalized_doc["items"]) == 2
+    item1 = normalized_doc["items"][0]
+    assert item1["date"] == "2026-11-05"
+    assert item1["title"] == "성수동 카페거리"
+    assert item1["start_time"] == "14:30"
+    assert item1["place_name"] == "대림창고"
+    assert item1["place_url"] == "https://map.kakao.com/link/search/대림창고"
+
+    item2 = normalized_doc["items"][1]
+    assert item2["title"] == "남산타워 야경"
+    assert item2["start_time"] == "19:00"
+    assert item2["end_time"] == "21:00"
+    assert item2["place_name"] == "N서울타워"
+    assert item2["place_url"] == "https://map.naver.com/p/entry/place/12345"
+
+
+def test_frontend_extract_and_normalize_multiline_pretty_printed_json_with_crlf_tabs_and_fences():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the inline JSON extractor helper")
+
+    template_path = Path(__file__).parents[1] / "app" / "templates" / "trip_detail.html"
+    template = template_path.read_text(encoding="utf-8")
+    helper_start = template.index("function extractJsonObjectFromLlmText(")
+    helper_end = template.index("\nfunction setExternalLlmFeedback(", helper_start)
+    helper_source = template[helper_start:helper_end]
+
+    pretty_fenced_crlf = (
+        "```json\r\n"
+        "{\r\n"
+        '\t"version": 1,\r\n'
+        '\t"items": [\r\n'
+        "\t\t{\r\n"
+        '\t\t\t"date": "2026-11-02",\r\n'
+        '\t\t\t"start_time": "09:00",\r\n'
+        '\t\t\t"end_time": "10:30",\r\n'
+        '\t\t\t"title": "다중 줄 일정 1",\r\n'
+        '\t\t\t"memo": "첫째 줄\\n둘째 줄",\r\n'
+        '\t\t\t"place_name": "국립중앙박물관",\r\n'
+        '\t\t\t"place_url": "https://map.kakao.com/link/search/국립중앙박물관"\r\n'
+        "\t\t},\r\n"
+        "\t\t{\r\n"
+        '\t\t\t"date": "2026-11-02",\r\n'
+        '\t\t\t"start_time": "12:00",\r\n'
+        '\t\t\t"title": "다중 줄 일정 2"\r\n'
+        "\t\t}\r\n"
+        "\t]\r\n"
+        "}\r\n"
+        "```"
+    )
+    pretty_array_in_prose = (
+        "요청하신 일정입니다:\n"
+        "[\n"
+        "  {\n"
+        '    "date": "2026-11-02",\n'
+        '    "start_time": "09:00",\n'
+        '    "title": "배열 다중 줄 1"\n'
+        "  },\n"
+        "  {\n"
+        '    "date": "2026-11-02",\n'
+        '    "start_time": "11:00",\n'
+        '    "title": "배열 다중 줄 2"\n'
+        "  }\n"
+        "]\n"
+        "즐거운 여행 되세요!"
+    )
+    script = f"""
+{helper_source}
+const samples = {json.dumps([pretty_fenced_crlf, pretty_array_in_prose], ensure_ascii=False)};
+const outputs = samples.map((s) => JSON.parse(normalizeExternalLlmJsonForRequest(s)));
+process.stdout.write(JSON.stringify(outputs));
+"""
+    result = subprocess.run(
+        [node, "--input-type=commonjs", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    outputs = json.loads(result.stdout)
+    assert len(outputs[0]["items"]) == 2
+    assert outputs[0]["items"][0]["title"] == "다중 줄 일정 1"
+    assert outputs[0]["items"][1]["title"] == "다중 줄 일정 2"
+    assert len(outputs[1]["items"]) == 2
+    assert [it["title"] for it in outputs[1]["items"]] == ["배열 다중 줄 1", "배열 다중 줄 2"]
+
+
+def test_frontend_unescapes_markdown_escaped_brackets_braces_and_underscores():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the inline JSON extractor helper")
+
+    template_path = Path(__file__).parents[1] / "app" / "templates" / "trip_detail.html"
+    template = template_path.read_text(encoding="utf-8")
+    helper_start = template.index("function extractJsonObjectFromLlmText(")
+    helper_end = template.index("\nfunction setExternalLlmFeedback(", helper_start)
+    helper_source = template[helper_start:helper_end]
+
+    escaped_raw = (
+        r'\{' + "\n"
+        r'  "version": 1,' + "\n"
+        r'  "items": \[{' + "\n"
+        r'    "date": "2026-11-02",' + "\n"
+        r'    "start\_time": "09:00",' + "\n"
+        r'    "end\_time": "10:30",' + "\n"
+        r'    "title": "마크다운 이스케이프 일정",' + "\n"
+        r'    "place\_name": "교토 역",' + "\n"
+        r'    "place\_url": "https://www.google.com/maps/search/?api=1&query=Kyoto\_Station"' + "\n"
+        r'  }\]' + "\n"
+        r'\}'
+    )
+    script = f"""
+{helper_source}
+const raw = {json.dumps(escaped_raw, ensure_ascii=False)};
+const extracted = extractJsonObjectFromLlmText(raw);
+const normalized = JSON.parse(normalizeExternalLlmJsonForRequest(raw));
+process.stdout.write(JSON.stringify({{ extracted, normalized }}));
+"""
+    result = subprocess.run(
+        [node, "--input-type=commonjs", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    payload = json.loads(result.stdout)
+    assert payload["extracted"]["items"][0]["start_time"] == "09:00"
+    assert payload["extracted"]["items"][0]["place_name"] == "교토 역"
+    assert payload["normalized"]["items"][0]["start_time"] == "09:00"
+    assert payload["normalized"]["items"][0]["end_time"] == "10:30"
+    assert payload["normalized"]["items"][0]["place_url"] == "https://www.google.com/maps/search/?api=1&query=Kyoto_Station"
+
+
+def test_resolved_kakao_javascript_key_supports_alias_env_fields(client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "kakao_javascript_key", "")
+    monkeypatch.setattr(settings, "kakao_javascript_api_key", "  alias_api_key_999  ")
+    monkeypatch.setattr(settings, "kakao_maps_browser_api_key", "browser_key_888")
+
+    register_and_login(client, "pages-kakao-alias@example.com")
+    trip = create_trip(client, timezone="Asia/Seoul")
+
+    res = client.get(f"/trips/{trip['id']}")
+    assert res.status_code == 200
+    assert settings.resolved_kakao_javascript_key == "alias_api_key_999"
+    assert "const HAS_KAKAO_JAVASCRIPT_KEY = true;" in res.text
+    assert 'const KAKAO_JAVASCRIPT_KEY = "alias_api_key_999";' in res.text
+
+
+def test_trip_detail_kakao_loader_and_empty_points_fallback_contract(client):
+    register_and_login(client, "pages-kakao-resilience@example.com")
+    trip = create_trip(client, timezone="Asia/Seoul")
+
+    res = client.get(f"/trips/{trip['id']}")
+    assert res.status_code == 200
+    text = res.text
+    assert "typeof window.kakao.maps.Map === \"function\"" in text
+    assert "Promise.resolve(true)" in text
+    assert "kakaoMap.relayout()" in text
+    assert "선택한 날짜에 표시할 좌표 장소가 없습니다. 일정에 장소를 검색해 연결하면 마커가 표시됩니다." in text
+    assert "카카오 지도를 불러오지 못했습니다. Kakao Developers 콘솔에서" in text
+
+
+def test_stitch_serene_expedition_fonts_and_design_tokens(client):
+    res = client.get("/login")
+    assert res.status_code == 200
+    assert "Plus+Jakarta+Sans" in res.text
+    assert "pretendard" in res.text
+
+    css_path = Path(__file__).parents[1] / "app" / "static" / "css" / "app.css"
+    css_text = css_path.read_text(encoding="utf-8")
+    assert "--color-bg: #fbf9f3;" in css_text
+    assert "--color-primary: #006762;" in css_text
+    assert "--color-surface-low: #f5f3ed;" in css_text
+    assert "--color-secondary-peach: #ffece3;" in css_text

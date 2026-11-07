@@ -70,19 +70,21 @@ def test_google_maps_hosts_are_allowed(url):
         "/maps/place/example",
         "https://google.com:8443/maps",
         "https://kakao.com/place/1",
-        "https://map.naver.com/p/example",
+        "https://map.naver.com.evil.test/p/example",
     ],
 )
 def test_unsafe_or_inactive_map_urls_are_rejected(url):
     assert not is_allowed_map_url(url)
 
 
-def test_provider_host_lists_only_enable_google_for_now():
+def test_provider_host_lists_enable_google_kakao_and_naver():
     assert GOOGLE_MAPS_HOSTS
-    assert KAKAO_MAPS_HOSTS == frozenset()
-    assert NAVER_MAPS_HOSTS == frozenset()
-    assert not is_allowed_map_url("https://map.kakao.com/link/map/1", "kakao")
-    assert not is_allowed_map_url("https://map.naver.com/p/example", "naver")
+    assert KAKAO_MAPS_HOSTS == frozenset({"map.kakao.com", "place.map.kakao.com", "kko.to", "m.map.kakao.com"})
+    assert NAVER_MAPS_HOSTS == frozenset({"map.naver.com", "m.map.naver.com", "naver.me"})
+    assert is_allowed_map_url("https://map.kakao.com/link/map/1", "kakao")
+    assert is_allowed_map_url("https://map.naver.com/p/example", "naver")
+    assert is_allowed_map_url("https://map.kakao.com/link/map/1", "any")
+    assert is_allowed_map_url("https://map.naver.com/p/example", "any")
 
 
 def test_empty_place_url_is_valid():
@@ -147,7 +149,6 @@ def test_extract_json_object_text_and_parse_draft_ignore_surrounding_prose(wrapp
     extracted = json.loads(extract_json_object_text(raw))
     assert extracted["version"] == 1
     assert extracted["items"][0]["title"] == "외부 LLM 추출 테스트"
-
     parsed = parse_external_llm_draft(raw, TRIP)
     assert len(parsed) == 1
     assert parsed[0].valid
@@ -167,7 +168,7 @@ def test_deeply_nested_json_is_reported_as_invalid_input():
         (make_item(start_time="24:00"), "시작 시간"),
         ({"date": "2026-11-02", "start_time": "09:00"}, "제목"),
         (make_item(latitude=33.5), "지원하지 않는 필드"),
-        (make_item(place_url="https://google.com.evil.test/"), "HTTPS Google 지도 URL"),
+        (make_item(place_url="https://google.com.evil.test/"), "HTTPS Google"),
     ],
 )
 def test_invalid_item_is_reported_without_raising_for_document(item, expected_error):
@@ -184,9 +185,16 @@ def test_invalid_item_does_not_block_valid_item_analysis():
     assert [item.valid for item in result] == [False, True]
 
 
-def test_document_rejects_more_than_thirty_items():
-    with pytest.raises(AppError, match="30개 이하"):
-        parse_external_llm_draft(make_document(*(make_item(title=f"일정 {i}") for i in range(31))), TRIP)
+def test_document_rejects_more_than_two_hundred_items():
+    with pytest.raises(AppError, match="최대 200개"):
+        parse_external_llm_draft(make_document(*(make_item(title=f"일정 {i}") for i in range(201))), TRIP)
+
+
+def test_document_accepts_between_thirty_and_two_hundred_items():
+    raw = make_document(*(make_item(title=f"일정 {i + 1}") for i in range(45)))
+    parsed = parse_external_llm_draft(raw, TRIP)
+    assert len(parsed) == 45
+    assert all(item.valid for item in parsed)
 
 
 def test_document_rejects_utf8_payload_over_100_kb():
@@ -211,6 +219,101 @@ def test_item_on_last_trip_day_is_invalid_when_default_end_leaves_trip_range():
     )[0]
     assert not result.valid
     assert "종료 시각이 여행 기간" in result.error
+
+
+def test_top_level_array_json_is_accepted_and_normalized():
+    raw = json.dumps(
+        [
+            {"date": "2026-11-02", "start_time": "09:00", "title": "배열 첫 일정"},
+            {"date": "2026-11-02", "start_time": "11:00", "title": "배열 두번째 일정"},
+        ],
+        ensure_ascii=False,
+    )
+    result = parse_external_llm_draft(raw, TRIP)
+    assert len(result) == 2
+    assert result[0].title == "배열 첫 일정"
+    assert result[1].title == "배열 두번째 일정"
+
+
+def test_nested_days_schedule_is_flattened_and_normalized():
+    raw = json.dumps(
+        {
+            "days": [
+                {
+                    "date": "2026-11-02",
+                    "activities": [
+                        {
+                            "time": "09:00 - 10:30",
+                            "activity": "공원 산책",
+                            "location": "제주 한림공원",
+                            "description": "아침 산책 코스",
+                            "place_url": "https://map.kakao.com/link/map/12345",
+                        },
+                        {
+                            "time": "오후 1:30",
+                            "name": "성산 흑돼지 식사",
+                            "spot": "흑돼지 명가",
+                            "tip": "대기 시간 유의",
+                        },
+                    ],
+                },
+                {
+                    "day": "Day 3",
+                    "schedule": [
+                        {
+                            "title": "카페 방문",
+                            "place_name": "바다 카페",
+                        }
+                    ],
+                },
+            ]
+        },
+        ensure_ascii=False,
+    )
+    result = parse_external_llm_draft(raw, TRIP)
+    assert len(result) == 3
+    # 1번째 항목
+    assert result[0].valid
+    assert result[0].title == "공원 산책"
+    assert result[0].location_name == "제주 한림공원"
+    assert result[0].start_at.strftime("%H:%M") == "09:00"
+    assert result[0].end_at.strftime("%H:%M") == "10:30"
+    assert result[0].place_url == "https://map.kakao.com/link/map/12345"
+    # 2번째 항목
+    assert result[1].valid
+    assert result[1].title == "성산 흑돼지 식사"
+    assert result[1].start_at.strftime("%H:%M") == "13:30"
+    # 3번째 항목 (Day 3 -> 2026-11-03)
+    assert result[2].valid
+    assert result[2].date.isoformat() == "2026-11-03"
+    assert result[2].title == "카페 방문"
+
+
+def test_alias_keys_and_smart_quotes_trailing_commas_are_normalized():
+    raw = """
+    ```json
+    {
+      “version”: 1,
+      “items”: [
+        {
+          “date”: “2026.11.02”,
+          “time”: “9시”,
+          “name”: “스마트 따옴표 일정”,
+          “place”: “제주 카페”,
+          “notes”: “후행 쉼표 테스트”,
+          “url”: “https://map.naver.com/p/entry/place/12345”,
+        },
+      ]
+    }
+    ```
+    """
+    result = parse_external_llm_draft(raw, TRIP)
+    assert len(result) == 1
+    assert result[0].valid
+    assert result[0].title == "스마트 따옴표 일정"
+    assert result[0].start_at.strftime("%H:%M") == "09:00"
+    assert result[0].location_name == "제주 카페"
+    assert result[0].place_url == "https://map.naver.com/p/entry/place/12345"
 
 
 def test_analyze_endpoint_returns_preview_fields_without_detail_payload(client):
@@ -476,3 +579,127 @@ def test_three_real_llm_samples_analyze_and_import_with_auto_place_candidates(cl
     )
     assert perplexity_import.status_code == 200
     assert perplexity_import.json()["created_count"] == 28
+
+
+def test_more_than_thirty_items_import_and_kakao_place_candidates(client):
+    register_and_login(client, "external-llm-45items@example.com")
+    trip = create_trip(client)
+    trip_id = trip["id"]
+
+    # 45개 일정 생성 (카카오맵 URL 포함)
+    items = [
+        {
+            "date": "2026-11-02",
+            "start_time": f"{9 + (i % 12):02d}:00",
+            "end_time": f"{10 + (i % 12):02d}:00",
+            "title": f"카카오/국내 일정 {i + 1}",
+            "place_name": f"성수동 명소 {i % 5 + 1}",
+            "place_url": f"https://map.kakao.com/link/map/{1000 + (i % 5)}",
+        }
+        for i in range(45)
+    ]
+    raw = json.dumps({"version": 1, "items": items}, ensure_ascii=False)
+
+    analyze_res = client.post(
+        f"/api/trips/{trip_id}/external-llm-itinerary/analyze",
+        json={"raw_json": raw},
+    )
+    assert analyze_res.status_code == 200
+    assert len(analyze_res.json()["items"]) == 45
+    assert all(it["valid"] for it in analyze_res.json()["items"])
+
+    import_res = client.post(
+        f"/api/trips/{trip_id}/external-llm-itinerary/import",
+        json={"raw_json": raw, "selected_indices": list(range(45))},
+    )
+    assert import_res.status_code == 200
+    assert import_res.json()["created_count"] == 45
+
+    candidates = client.get(f"/api/trips/{trip_id}/place-candidates").json()
+    assert len(candidates) == 5
+    for c in candidates:
+        assert c["provider"] == "kakao"
+        assert "map.kakao.com" in c["map_url"]
+
+
+def test_multiline_pretty_printed_json_with_crlf_tabs_and_markdown_fences():
+    pretty_fenced = (
+        "```json\r\n"
+        "{\r\n"
+        '\t"version": 1,\r\n'
+        '\t"items": [\r\n'
+        "\t\t{\r\n"
+        '\t\t\t"date": "2026-11-02",\r\n'
+        '\t\t\t"start_time": "09:00",\r\n'
+        '\t\t\t"end_time": "10:30",\r\n'
+        '\t\t\t"title": "다중 줄 박물관 방문",\r\n'
+        '\t\t\t"memo": "오전 관람",\r\n'
+        '\t\t\t"place_name": "국립제주박물관",\r\n'
+        '\t\t\t"place_url": "https://map.kakao.com/link/map/12345"\r\n'
+        "\t\t},\r\n"
+        "\t\t{\r\n"
+        '\t\t\t"date": "2026-11-02",\r\n'
+        '\t\t\t"start_time": "12:00",\r\n'
+        '\t\t\t"title": "다중 줄 점심 식사"\r\n'
+        "\t\t}\r\n"
+        "\t]\r\n"
+        "}\r\n"
+        "```"
+    )
+    extracted = json.loads(extract_json_object_text(pretty_fenced))
+    assert len(extracted["items"]) == 2
+    parsed = parse_external_llm_draft(pretty_fenced, TRIP)
+    assert len(parsed) == 2
+    assert all(item.valid for item in parsed)
+    assert [item.title for item in parsed] == ["다중 줄 박물관 방문", "다중 줄 점심 식사"]
+
+    prose_multiline_array = (
+        "아래는 요청하신 일정입니다.\r\n\r\n"
+        "[\r\n"
+        "  {\r\n"
+        '    "date": "2026-11-02",\r\n'
+        '    "start_time": "09:00",\r\n'
+        '    "title": "배열 첫 일정"\r\n'
+        "  },\r\n"
+        "  {\r\n"
+        '    "date": "2026-11-02",\r\n'
+        '    "start_time": "11:00",\r\n'
+        '    "title": "배열 둘째 일정"\r\n'
+        "  }\r\n"
+        "]\r\n"
+        "즐거운 여행 되세요!"
+    )
+    parsed_array = parse_external_llm_draft(prose_multiline_array, TRIP)
+    assert len(parsed_array) == 2
+    assert all(item.valid for item in parsed_array)
+    assert [item.title for item in parsed_array] == ["배열 첫 일정", "배열 둘째 일정"]
+
+
+def test_backend_unescapes_markdown_escaped_brackets_braces_and_underscores():
+    escaped_raw = (
+        r'```json' + "\n"
+        r'\{' + "\n"
+        r'  "version": 1,' + "\n"
+        r'  "items": \[{' + "\n"
+        r'    "date": "2026-11-02",' + "\n"
+        r'    "start\_time": "09:00",' + "\n"
+        r'    "end\_time": "10:30",' + "\n"
+        r'    "title": "마크다운 이스케이프 일정",' + "\n"
+        r'    "place\_name": "교토 역",' + "\n"
+        r'    "place\_url": "https://www.google.com/maps/search/?api=1&query=Kyoto\_Station"' + "\n"
+        r'  }\]' + "\n"
+        r'\}' + "\n"
+        r'```'
+    )
+    extracted_str = extract_json_object_text(escaped_raw)
+    extracted_doc = json.loads(extracted_str)
+    assert extracted_doc["version"] == 1
+    assert extracted_doc["items"][0]["start_time"] == "09:00"
+    assert extracted_doc["items"][0]["place_name"] == "교토 역"
+
+    parsed = parse_external_llm_draft(escaped_raw, TRIP)
+    assert len(parsed) == 1
+    assert parsed[0].valid
+    assert parsed[0].title == "마크다운 이스케이프 일정"
+    assert parsed[0].location_name == "교토 역"
+    assert parsed[0].place_url == "https://www.google.com/maps/search/?api=1&query=Kyoto_Station"

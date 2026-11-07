@@ -36,7 +36,24 @@ class Settings(BaseSettings):
     google_maps_api_key: str = ""
     google_maps_browser_api_key: str = ""
     kakao_rest_api_key: str = ""
+    kakao_javascript_key: str = ""
+    kakao_javascript_api_key: str = ""
+    kakao_maps_browser_api_key: str = ""
+    kakao_map_api_key: str = ""
     gemini_api_key: str = ""
+
+    @property
+    def resolved_kakao_javascript_key(self) -> str:
+        for candidate in (
+            self.kakao_javascript_key,
+            self.kakao_javascript_api_key,
+            self.kakao_maps_browser_api_key,
+            self.kakao_map_api_key,
+        ):
+            cleaned = (candidate or "").strip()
+            if cleaned:
+                return cleaned
+        return ""
 
 @lru_cache
 def get_settings() -> Settings:

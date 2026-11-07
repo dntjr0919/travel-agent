@@ -5,16 +5,18 @@ from fastapi.testclient import TestClient
 from tests.conftest import register_and_login
 
 
-def create_trip(client: TestClient) -> dict:
+def create_trip(client: TestClient, **overrides) -> dict:
+    payload = {
+        "title": "Jeju Trip",
+        "destination": "Jeju",
+        "start_date": "2026-11-01",
+        "end_date": "2026-11-05",
+        "timezone": "Asia/Seoul",
+    }
+    payload.update(overrides)
     res = client.post(
         "/api/trips",
-        json={
-            "title": "Jeju Trip",
-            "destination": "Jeju",
-            "start_date": "2026-11-01",
-            "end_date": "2026-11-05",
-            "timezone": "Asia/Seoul",
-        },
+        json=payload,
     )
     assert res.status_code == 201
     return res.json()
@@ -68,4 +70,3 @@ def test_owner_can_delete_trip_and_others_remain(client):
 
     remaining = [t['id'] for t in client.get("/api/trips").json()]
     assert remaining == [second['id']]
-
